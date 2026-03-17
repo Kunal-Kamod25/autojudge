@@ -1,7 +1,7 @@
 const Submission = require('../models/Submission');
 const Assignment = require('../models/Assignment');
 const User = require('../models/User');
-const { runCode } = require('../services/sandboxService');
+const { runCode, runWithInput } = require('../services/sandboxService');
 const { generateFeedback, detectPlagiarism } = require('../services/aiService');
 const { generateSubmissionReport } = require('../services/pdfService');
 const fs = require('fs');
@@ -99,6 +99,83 @@ exports.submit = async (req, res) => {
     await submission.save();
 
     res.json({ success: true, submission: { _id: submission._id, verdict: overallVerdict, score, totalScore, passed, total: testCases.length, testResults, status: 'completed' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.runCustom = async (req, res) => {
+  try {
+    const { code, language, input = '' } = req.body;
+    let finalCode = code;
+
+    // Handle file upload for custom run
+    if (req.file) {
+      const ext = req.file.originalname.split('.').pop().toLowerCase();
+      if (ext === 'zip') {
+        const zip = new AdmZip(req.file.path);
+        const entries = zip.getEntries().filter(e => !e.isDirectory);
+        const codeEntry = entries.find(e => ['cpp','c','py','java','js'].includes(e.entryName.split('.').pop()));
+        if (codeEntry) finalCode = zip.readAsText(codeEntry);
+        else return res.status(400).json({ success: false, message: 'No valid code file in zip' });
+      } else {
+        finalCode = fs.readFileSync(req.file.path, 'utf-8');
+      }
+    }
+
+    if (!finalCode) return res.status(400).json({ success: false, message: 'No code provided' });
+    if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
+
+    const runResult = await runWithInput(finalCode, language, input);
+
+    const submission = await Submission.create({
+      student: req.user._id,
+      code: finalCode,
+      language,
+      fileName: req.file?.originalname,
+      status: 'completed',
+      verdict: runResult.verdict,
+      score: 0,
+      totalScore: 0,
+      totalTests: 1,
+      passedTests: runResult.verdict === 'AC' ? 1 : 0,
+      executionTime: runResult.executionTime,
+      testResults: [{
+        type: 'custom',
+        input,
+        expectedOutput: '',
+        actualOutput: runResult.output,
+        verdict: runResult.verdict,
+        executionTime: runResult.executionTime,
+        memoryUsed: 0,
+        points: 0,
+        errorMessage: runResult.errorMessage || ''
+      }]
+    });
+
+    // Lightweight AI feedback for custom run
+    try {
+      const feedback = await generateFeedback(finalCode, language, submission.testResults, 'Custom Run');
+      submission.aiFeedback = feedback;
+      await submission.save();
+    } catch (e) {
+      // Keep custom run fast even if AI feedback fails
+    }
+
+    res.json({
+      success: true,
+      submission: {
+        _id: submission._id,
+        verdict: runResult.verdict,
+        output: runResult.output,
+        errorMessage: runResult.errorMessage,
+        executionTime: runResult.executionTime,
+        language,
+        input,
+        testResults: submission.testResults,
+        aiFeedback: submission.aiFeedback
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

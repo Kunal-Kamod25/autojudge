@@ -91,3 +91,58 @@ exports.runCode = async (code, language, testCases) => {
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch(e) {}
   return results;
 };
+
+exports.runWithInput = async (code, language, input = "", timeLimit = 5000) => {
+  const tmpDir = path.join(os.tmpdir(), `aj_${uuidv4()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const lang = LANG_CONFIG[language];
+  if (!lang) throw new Error("Unsupported language");
+
+  const className = language === "java" ? (code.match(/public\s+class\s+(\w+)/) || ["", "Main"])[1] : "Main";
+  const filePath = path.join(tmpDir, language === "java" ? `${className}` : "code");
+  const srcFile = `${filePath}.${lang.ext}`;
+  fs.writeFileSync(srcFile, code);
+
+  try {
+    if (lang.compiled) {
+      const compileCmd = lang.compile(filePath, className);
+      const { stderr, exitCode } = await execPromise(compileCmd, 15000);
+      if (exitCode !== 0) {
+        return {
+          verdict: "CE",
+          output: "",
+          executionTime: 0,
+          errorMessage: (stderr || "Compilation failed").substring(0, 500)
+        };
+      }
+    }
+
+    const safeInput = String(input).replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    const start = Date.now();
+    const runCmd = language === "java" ? lang.run(filePath, className, safeInput) : lang.run(filePath, safeInput);
+    const { stdout, stderr, timedOut } = await execPromise(runCmd, timeLimit + 2000);
+    const executionTime = Date.now() - start;
+
+    if (timedOut) {
+      return { verdict: "TLE", output: "", executionTime, errorMessage: "Time limit exceeded" };
+    }
+
+    if (stderr && !stdout) {
+      return {
+        verdict: "RE",
+        output: "",
+        executionTime,
+        errorMessage: stderr.substring(0, 500)
+      };
+    }
+
+    return {
+      verdict: "AC",
+      output: (stdout || "").trim(),
+      executionTime,
+      errorMessage: stderr ? stderr.substring(0, 500) : ""
+    };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch(e) {}
+  }
+};

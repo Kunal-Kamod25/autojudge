@@ -35,6 +35,11 @@ export default function StudentDashboard() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
           <h1 className="text-3xl font-black">Hey, <span className="gradient-text">{user?.name?.split(' ')[0]} 👋</span></h1>
           <p className="text-gray-400 mt-1">Ready to code today?</p>
+          <div className="mt-4">
+            <Link href="/student/run" className="btn-primary text-sm py-2 inline-flex items-center gap-2">
+              <Code2 className="w-4 h-4" /> Run My Code
+            </Link>
+          </div>
         </motion.div>
 
         {/* Stats Cards */}
