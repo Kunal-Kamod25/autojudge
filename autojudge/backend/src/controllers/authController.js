@@ -72,7 +72,8 @@ exports.oauthSuccess = async (req, res) => {
   req.user.refreshTokens.push({ token: refreshToken });
   await req.user.save();
   setTokenCookies(res, accessToken, refreshToken);
-  res.redirect(`${process.env.FRONTEND_URL}/dashboard?token=${accessToken}`);
+  const dest = req.user.role === 'teacher' ? '/teacher/dashboard' : req.user.role === 'admin' ? '/admin' : '/student/dashboard';
+  res.redirect(`${process.env.FRONTEND_URL}${dest}?token=${accessToken}`);
 };
 
 // ─── Forgot Password Flow ─────────────────────────────
