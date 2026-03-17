@@ -137,7 +137,11 @@ exports.submit = async (req, res) => {
 
 exports.runCustom = async (req, res) => {
   try {
-    const { code, language, input = '' } = req.body;
+    const { code, language, input = '', timeLimit } = req.body;
+    const parsedLimit = Number(timeLimit);
+    const customTimeLimit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 2000), 180000)
+      : 60000;
     let finalCode = code;
     let runResult = null;
 
@@ -148,7 +152,7 @@ exports.runCustom = async (req, res) => {
       const ext = req.file.originalname.split('.').pop().toLowerCase();
       if (ext === 'zip') {
         // Project mode: supports multi-file C/C++ projects and file-based input access.
-        runResult = await runProjectFromZip(req.file.path, language, input);
+        runResult = await runProjectFromZip(req.file.path, language, input, customTimeLimit);
 
         // Keep one representative source in DB for quick preview/history.
         const zip = new AdmZip(req.file.path);
@@ -170,7 +174,7 @@ exports.runCustom = async (req, res) => {
     }
 
     if (!finalCode) return res.status(400).json({ success: false, message: 'No code provided' });
-    if (!runResult) runResult = await runWithInput(finalCode, language, input);
+    if (!runResult) runResult = await runWithInput(finalCode, language, input, customTimeLimit);
 
     const submission = await Submission.create({
       student: req.user._id,
@@ -217,6 +221,7 @@ exports.runCustom = async (req, res) => {
         isGTest: !!runResult.isGTest,
         language,
         input,
+        timeLimit: customTimeLimit,
         testResults: submission.testResults,
         aiFeedback: submission.aiFeedback
       }

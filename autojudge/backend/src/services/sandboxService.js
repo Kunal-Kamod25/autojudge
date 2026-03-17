@@ -6,11 +6,11 @@ const os = require("os");
 const AdmZip = require("adm-zip");
 
 const LANG_CONFIG = {
-  cpp: { ext: "cpp", compile: (f) => `g++ -O2 -o ${f}.out ${f}.cpp`, run: (f, input) => `echo "${input}" | timeout 5 ${f}.out`, compiled: true },
-  c:   { ext: "c",   compile: (f) => `gcc -O2 -o ${f}.out ${f}.c`,   run: (f, input) => `echo "${input}" | timeout 5 ${f}.out`, compiled: true },
-  python: { ext: "py", run: (f, input) => `echo "${input}" | timeout 5 python3 ${f}.py`, compiled: false },
-  java: { ext: "java", compile: (f, cls) => `javac ${f}.java`, run: (f, cls, input) => `echo "${input}" | timeout 10 java -cp ${path.dirname(f)} ${cls}`, compiled: true },
-  javascript: { ext: "js", run: (f, input) => `echo "${input}" | timeout 5 node ${f}.js`, compiled: false }
+  cpp: { ext: "cpp", compile: (f) => `g++ -O2 -o ${f}.out ${f}.cpp`, run: (f, input, timeoutSec = 5) => `echo "${input}" | timeout ${timeoutSec} ${f}.out`, compiled: true },
+  c:   { ext: "c",   compile: (f) => `gcc -O2 -o ${f}.out ${f}.c`,   run: (f, input, timeoutSec = 5) => `echo "${input}" | timeout ${timeoutSec} ${f}.out`, compiled: true },
+  python: { ext: "py", run: (f, input, timeoutSec = 5) => `echo "${input}" | timeout ${timeoutSec} python3 ${f}.py`, compiled: false },
+  java: { ext: "java", compile: (f, cls) => `javac ${f}.java`, run: (f, cls, input, timeoutSec = 10) => `echo "${input}" | timeout ${timeoutSec} java -cp ${path.dirname(f)} ${cls}`, compiled: true },
+  javascript: { ext: "js", run: (f, input, timeoutSec = 5) => `echo "${input}" | timeout ${timeoutSec} node ${f}.js`, compiled: false }
 };
 
 const execPromise = (cmd, timeoutMs = 10000, options = {}) => new Promise((resolve) => {
@@ -38,6 +38,28 @@ const walkFiles = (root) => {
 const toShellPath = (p) => p.replace(/\\/g, "/");
 const q = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
 const sanitizeInput = (value) => String(value || "").replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
+
+const computeAdaptiveTimeLimit = (rawInput, baseMs = 5000) => {
+  const safeBase = Number.isFinite(baseMs) ? Math.max(2000, baseMs) : 5000;
+  const inputText = String(rawInput || "").trim();
+  if (!inputText) return safeBase;
+
+  const tokenCount = inputText.split(/\s+/).length;
+  const maybeN = parseInt(inputText.split(/\s+/)[0], 10);
+
+  let boosted = safeBase;
+  if (tokenCount > 50000) boosted = Math.max(boosted, 120000);
+  else if (tokenCount > 20000) boosted = Math.max(boosted, 60000);
+  else if (tokenCount > 8000) boosted = Math.max(boosted, 30000);
+
+  if (Number.isFinite(maybeN)) {
+    if (maybeN >= 700) boosted = Math.max(boosted, 120000);
+    else if (maybeN >= 400) boosted = Math.max(boosted, 60000);
+    else if (maybeN >= 250) boosted = Math.max(boosted, 30000);
+  }
+
+  return Math.min(boosted, 180000);
+};
 
 const detectGTestProject = (files) => {
   const patterns = [/gtest\/gtest\.h/, /\bTEST(_F|_P)?\s*\(/, /\bRUN_ALL_TESTS\s*\(/];
@@ -94,11 +116,13 @@ exports.runCode = async (code, language, testCases) => {
   for (const tc of testCases) {
     const start = Date.now();
     const safeInput = tc.input.replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    const adaptiveLimit = computeAdaptiveTimeLimit(tc.input, tc.timeLimit || 5000);
+    const timeoutSec = Math.max(2, Math.ceil((adaptiveLimit + 1500) / 1000));
     let runCmd;
-    if (language === "java") runCmd = lang.run(filePath, className, safeInput);
-    else runCmd = lang.run(filePath, safeInput);
+    if (language === "java") runCmd = lang.run(filePath, className, safeInput, timeoutSec);
+    else runCmd = lang.run(filePath, safeInput, timeoutSec);
 
-    const { stdout, stderr, timedOut } = await execPromise(runCmd, (tc.timeLimit || 5000) + 2000);
+    const { stdout, stderr, timedOut } = await execPromise(runCmd, adaptiveLimit + 2000);
     const execTime = Date.now() - start;
     const actual = stdout.trim();
     const expected = tc.expectedOutput.trim();
@@ -152,14 +176,16 @@ exports.runWithInput = async (code, language, input = "", timeLimit = 5000) => {
       }
     }
 
+    const effectiveTimeLimit = computeAdaptiveTimeLimit(input, timeLimit);
+    const timeoutSec = Math.max(2, Math.ceil((effectiveTimeLimit + 1500) / 1000));
     const safeInput = String(input).replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
     const start = Date.now();
-    const runCmd = language === "java" ? lang.run(filePath, className, safeInput) : lang.run(filePath, safeInput);
-    const { stdout, stderr, timedOut } = await execPromise(runCmd, timeLimit + 2000);
+    const runCmd = language === "java" ? lang.run(filePath, className, safeInput, timeoutSec) : lang.run(filePath, safeInput, timeoutSec);
+    const { stdout, stderr, timedOut } = await execPromise(runCmd, effectiveTimeLimit + 2000);
     const executionTime = Date.now() - start;
 
     if (timedOut) {
-      return { verdict: "TLE", output: "", executionTime, errorMessage: "Time limit exceeded" };
+      return { verdict: "TLE", output: "", executionTime, errorMessage: `Time limit exceeded (${Math.round(effectiveTimeLimit / 1000)}s)` };
     }
 
     if (stderr && !stdout) {
@@ -250,6 +276,8 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
 
     let runCmd = "";
     let compileCmd = "";
+    const effectiveTimeLimit = computeAdaptiveTimeLimit(actualInput, timeLimit);
+    const timeoutSec = Math.max(2, Math.ceil((effectiveTimeLimit + 3000) / 1000));
 
     if (language === "cpp") {
       const includeDirs = Array.from(new Set(
@@ -264,8 +292,8 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
 
       compileCmd = `g++ -std=c++17 -O2 ${includeFlags} ${relSources.join(" ")} -o main.out${isGTest ? " -lgtest -lgtest_main -pthread" : ""}`;
       runCmd = isGTest
-        ? "timeout 10 ./main.out"
-        : `echo ${q(sanitizeInput(actualInput))} | timeout 10 ./main.out`;
+        ? `timeout ${timeoutSec} ./main.out`
+        : `echo ${q(sanitizeInput(actualInput))} | timeout ${timeoutSec} ./main.out`;
     } else if (language === "c") {
       const includeDirs = Array.from(new Set(
         allFiles
@@ -278,7 +306,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       const includeFlags = includeDirs.map((d) => `-I${q(toShellPath(path.relative(tmpDir, d) || "."))}`).join(" ");
 
       compileCmd = `gcc -O2 ${includeFlags} ${relSources.join(" ")} -o main.out`;
-      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 ./main.out`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout ${timeoutSec} ./main.out`;
     } else if (language === "java") {
       compileCmd = `javac ${relSources.join(" ")}`;
       const javaMainFile = sourceFiles.find((file) => {
@@ -290,13 +318,13 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
         }
       }) || sourceFiles[0];
       const mainClass = path.basename(javaMainFile, ".java");
-      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 java -cp . ${mainClass}`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout ${timeoutSec} java -cp . ${mainClass}`;
     } else if (language === "python") {
       const mainPy = sourceFiles.find((f) => path.basename(f).toLowerCase() === "main.py") || sourceFiles[0];
-      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 python3 ${q(toShellPath(path.relative(tmpDir, mainPy)))}`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout ${timeoutSec} python3 ${q(toShellPath(path.relative(tmpDir, mainPy)))}`;
     } else if (language === "javascript") {
       const mainJs = sourceFiles.find((f) => ["main.js", "index.js"].includes(path.basename(f).toLowerCase())) || sourceFiles[0];
-      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 node ${q(toShellPath(path.relative(tmpDir, mainJs)))}`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout ${timeoutSec} node ${q(toShellPath(path.relative(tmpDir, mainJs)))}`;
     }
 
     if (compileCmd) {
@@ -313,11 +341,17 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     }
 
     const start = Date.now();
-    const runRes = await execPromise(runCmd, timeLimit + 5000, { cwd: tmpDir });
+    const runRes = await execPromise(runCmd, effectiveTimeLimit + 5000, { cwd: tmpDir });
     const executionTime = Date.now() - start;
 
     if (runRes.timedOut) {
-      return { verdict: "TLE", output: "", executionTime, errorMessage: "Time limit exceeded", isGTest };
+      return {
+        verdict: "TLE",
+        output: "",
+        executionTime,
+        errorMessage: `Time limit exceeded (${Math.round(effectiveTimeLimit / 1000)}s)`,
+        isGTest
+      };
     }
 
     // In Google Test mode, non-zero exit means tests failed.

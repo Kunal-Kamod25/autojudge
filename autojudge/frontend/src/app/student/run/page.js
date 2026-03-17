@@ -28,6 +28,7 @@ export default function StudentRunPage() {
   const [input, setInput] = useState('2 3\n1 2 3\n4 5 6')
   const [selectedInputFiles, setSelectedInputFiles] = useState([])
   const [inputExecutionMode, setInputExecutionMode] = useState('separate')
+  const [timeLimitSec, setTimeLimitSec] = useState(60)
   const [file, setFile] = useState(null)
   const [zipFiles, setZipFiles] = useState([])
   const [selectedFilePreview, setSelectedFilePreview] = useState(null)
@@ -92,10 +93,11 @@ export default function StudentRunPage() {
           fd.append('file', file)
           fd.append('language', language)
           fd.append('input', runInput)
+          fd.append('timeLimit', String(timeLimitSec * 1000))
           const res = await submissionApi.runCustomFile(fd)
           return res.data.submission
         }
-        const res = await submissionApi.runCustom({ code, language, input: runInput })
+        const res = await submissionApi.runCustom({ code, language, input: runInput, timeLimit: timeLimitSec * 1000 })
         return res.data.submission
       }
 
@@ -162,6 +164,21 @@ export default function StudentRunPage() {
                 className="ml-auto btn-primary py-2 flex items-center gap-2">
                 {running ? <><span className="animate-spin w-4 h-4 border-2 border-navy border-t-transparent rounded-full" /> Running...</> : <><Play className="w-4 h-4" /> Run</>}
               </button>
+            </div>
+
+            <div className="px-4 py-2 border-b border-white/10 bg-navy-2/70 flex items-center gap-2 text-xs">
+              <span className="text-gray-400">Time Limit</span>
+              <select
+                value={timeLimitSec}
+                onChange={(e) => setTimeLimitSec(Number(e.target.value))}
+                className="bg-navy-light border border-white/20 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan"
+              >
+                <option value={30}>30s</option>
+                <option value={60}>60s</option>
+                <option value={120}>120s</option>
+                <option value={180}>180s</option>
+              </select>
+              <span className="text-gray-500">Large matrices may need higher limit.</span>
             </div>
 
             {!file && (
