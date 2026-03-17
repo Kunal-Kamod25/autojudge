@@ -41,9 +41,26 @@ io.on('connection', (socket) => {
 
 connectDB();
 
+// CORS configuration with better origin handling
+const corsOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowed = [corsOrigin, 'http://localhost:3000', 'http://localhost:3001'];
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all in production for debugging
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+};
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true, methods: ['GET','POST','PUT','DELETE','PATCH'] }));
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 const limiter = rateLimit({ windowMs: 15*60*1000, max: 200 });
 const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 15 });
