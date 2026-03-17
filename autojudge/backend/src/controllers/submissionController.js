@@ -259,8 +259,6 @@ exports.extractZip = async (req, res) => {
         try {
           if (isSourceFile || isInputFile) {
             content = zip.readAsText(entry);
-            // Truncate large files for preview (first 500 chars)
-            if (content.length > 500) content = content.substring(0, 500) + '...\n[content truncated]';
           }
         } catch (e) {
           content = '[Binary file or unable to read]';

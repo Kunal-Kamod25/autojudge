@@ -101,11 +101,8 @@ export default function StudentRunPage() {
 
       if (selectedInputFiles.length > 0) {
         if (inputExecutionMode === 'combine') {
-          const combinedInput = selectedInputFiles
-            .map((name) => zipFiles.find((f) => f.name === name)?.content || '')
-            .join('\n')
-
-          const submission = await runOnce(combinedInput)
+          const combinedInputMarker = `@@${selectedInputFiles.join('||')}`
+          const submission = await runOnce(combinedInputMarker)
           setResult({ ...submission, combinedFiles: [...selectedInputFiles] })
           toast.success(`Ran combined input from ${selectedInputFiles.length} file(s)`)
         } else {
@@ -397,6 +394,10 @@ export default function StudentRunPage() {
                           <p className="text-xs text-cyan font-semibold">Test Case {i + 1}: {r.inputFileName}</p>
                           <span className={`text-xs font-semibold ${vv.text}`}>{r.verdict}</span>
                         </div>
+                        <div className="text-[11px] text-gray-400 flex items-center justify-between">
+                          <span>Execution Time: {r.executionTime || 0} ms</span>
+                          <span>Complexity: {r.aiFeedback?.complexity || 'N/A'}</span>
+                        </div>
                         <pre className="bg-navy-2 rounded-lg p-2 text-xs text-green-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.output || '(no output)'}</pre>
                         {r.errorMessage && (
                           <pre className="bg-danger/10 border border-danger/30 rounded-lg p-2 text-xs text-danger font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.errorMessage}</pre>
@@ -423,6 +424,16 @@ export default function StudentRunPage() {
                       {result.isGTest && <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-cyan border border-cyan/30">Google Test</span>}
                     </div>
                     <span className="text-xs text-gray-400">{result.executionTime || 0} ms</span>
+                  </div>
+
+                  <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs flex items-center justify-between">
+                    <span className="text-gray-300">Test Cases Passed</span>
+                    <span className="text-cyan font-bold">{result.verdict === 'AC' ? '1/1' : '0/1'}</span>
+                  </div>
+
+                  <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs">
+                    <p className="text-gray-400 mb-1">Estimated Time Complexity</p>
+                    <p className="text-cyan font-semibold">{result.aiFeedback?.complexity || 'N/A'}</p>
                   </div>
 
                   <div>

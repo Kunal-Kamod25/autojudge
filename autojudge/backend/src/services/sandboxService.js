@@ -210,16 +210,39 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     const isGTest = language === "cpp" && detectGTestProject(allFiles);
     const relSources = sourceFiles.map((f) => q(toShellPath(path.relative(tmpDir, f))));
 
-    // Support input from file: if input starts with "@filename", read from that file
+    const resolveInputFilePath = (name) => {
+      const normalizedName = String(name || "").replace(/\\/g, "/").replace(/^\/+/, "");
+      return allFiles.find((f) => {
+        const rel = toShellPath(path.relative(tmpDir, f));
+        return rel === normalizedName || path.basename(f) === normalizedName;
+      });
+    };
+
+    // Support input from file:
+    // - @path/to/file.txt -> one file
+    // - @@fileA.txt||fileB.txt -> combine multiple files in order
     let actualInput = input;
-    if (input.startsWith("@")) {
-      const inputFileName = input.substring(1);
-      const inputFilePath = allFiles.find(f => path.basename(f) === inputFileName);
+    if (typeof input === "string" && input.startsWith("@@")) {
+      const inputFileNames = input.substring(2).split("||").map((x) => x.trim()).filter(Boolean);
+      const chunks = [];
+      for (const fileName of inputFileNames) {
+        const inputFilePath = resolveInputFilePath(fileName);
+        if (inputFilePath) {
+          try {
+            chunks.push(fs.readFileSync(inputFilePath, "utf-8"));
+          } catch (e) {
+            chunks.push("");
+          }
+        }
+      }
+      actualInput = chunks.join("\n");
+    } else if (typeof input === "string" && input.startsWith("@")) {
+      const inputFileName = input.substring(1).trim();
+      const inputFilePath = resolveInputFilePath(inputFileName);
       if (inputFilePath) {
         try {
-          actualInput = fs.readFileSync(inputFilePath, 'utf-8');
+          actualInput = fs.readFileSync(inputFilePath, "utf-8");
         } catch (e) {
-          // If file read fails, use empty input
           actualInput = "";
         }
       }
@@ -229,12 +252,32 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     let compileCmd = "";
 
     if (language === "cpp") {
-      compileCmd = `g++ -std=c++17 -O2 ${relSources.join(" ")} -o main.out${isGTest ? " -lgtest -lgtest_main -pthread" : ""}`;
+      const includeDirs = Array.from(new Set(
+        allFiles
+          .filter((f) => {
+            const ext = path.extname(f).toLowerCase();
+            return [".h", ".hpp", ".hh", ".hxx", ".cpp", ".cc", ".cxx"].includes(ext);
+          })
+          .map((f) => path.dirname(f))
+      ));
+      const includeFlags = includeDirs.map((d) => `-I${q(toShellPath(path.relative(tmpDir, d) || "."))}`).join(" ");
+
+      compileCmd = `g++ -std=c++17 -O2 ${includeFlags} ${relSources.join(" ")} -o main.out${isGTest ? " -lgtest -lgtest_main -pthread" : ""}`;
       runCmd = isGTest
         ? "timeout 10 ./main.out"
         : `echo ${q(sanitizeInput(actualInput))} | timeout 10 ./main.out`;
     } else if (language === "c") {
-      compileCmd = `gcc -O2 ${relSources.join(" ")} -o main.out`;
+      const includeDirs = Array.from(new Set(
+        allFiles
+          .filter((f) => {
+            const ext = path.extname(f).toLowerCase();
+            return [".h", ".c"].includes(ext);
+          })
+          .map((f) => path.dirname(f))
+      ));
+      const includeFlags = includeDirs.map((d) => `-I${q(toShellPath(path.relative(tmpDir, d) || "."))}`).join(" ");
+
+      compileCmd = `gcc -O2 ${includeFlags} ${relSources.join(" ")} -o main.out`;
       runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 ./main.out`;
     } else if (language === "java") {
       compileCmd = `javac ${relSources.join(" ")}`;
