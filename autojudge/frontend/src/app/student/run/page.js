@@ -29,6 +29,7 @@ export default function StudentRunPage() {
   const [selectedInputFiles, setSelectedInputFiles] = useState([])
   const [inputExecutionMode, setInputExecutionMode] = useState('separate')
   const [timeLimitSec, setTimeLimitSec] = useState(180)
+  const [entryFile, setEntryFile] = useState('')
   const [file, setFile] = useState(null)
   const [zipFiles, setZipFiles] = useState([])
   const [selectedFilePreview, setSelectedFilePreview] = useState(null)
@@ -41,6 +42,7 @@ export default function StudentRunPage() {
     const f = files[0]
     setFile(f)
     setZipFiles([])
+    setEntryFile('')
     setSelectedInputFiles([])
     setInputExecutionMode('separate')
     setSelectedFilePreview(null)
@@ -59,6 +61,8 @@ export default function StudentRunPage() {
       fd.append('language', language)
       const res = await submissionApi.extractZip(fd)
       setZipFiles(res.data.files)
+      const mainCandidates = (res.data.files || []).filter((x) => x.isSourceFile && x.hasMain)
+      setEntryFile(mainCandidates[0]?.name || '')
       toast.success(`ZIP loaded: ${res.data.files.length} files`)
     } catch (err) {
       toast.error('Failed to extract ZIP')
@@ -94,6 +98,7 @@ export default function StudentRunPage() {
           fd.append('language', language)
           fd.append('input', runInput)
           fd.append('timeLimit', String(timeLimitSec * 1000))
+          if (entryFile) fd.append('entryFile', entryFile)
           const res = await submissionApi.runCustomFile(fd)
           return res.data.submission
         }
@@ -134,6 +139,7 @@ export default function StudentRunPage() {
 
   const sourceFiles = zipFiles.filter(f => f.isSourceFile)
   const inputFiles = zipFiles.filter(f => f.isInputFile)
+  const mainSourceFiles = sourceFiles.filter(f => f.hasMain)
 
   return (
     <div className="min-h-screen bg-navy flex flex-col">
@@ -181,6 +187,22 @@ export default function StudentRunPage() {
               </select>
               <span className="text-gray-500">Large matrices may need higher limit.</span>
             </div>
+
+            {file && mainSourceFiles.length > 1 && (
+              <div className="px-4 py-2 border-b border-white/10 bg-navy-2/70 flex items-center gap-2 text-xs">
+                <span className="text-gray-400">Entry File</span>
+                <select
+                  value={entryFile}
+                  onChange={(e) => setEntryFile(e.target.value)}
+                  className="bg-navy-light border border-white/20 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan"
+                >
+                  {mainSourceFiles.map((f, i) => (
+                    <option key={i} value={f.name}>{f.name}</option>
+                  ))}
+                </select>
+                <span className="text-gray-500">Choose which main file to run.</span>
+              </div>
+            )}
 
             {!file && (
               <div className="flex-1">

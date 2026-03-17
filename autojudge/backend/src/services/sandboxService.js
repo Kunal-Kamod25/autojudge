@@ -208,7 +208,7 @@ exports.runWithInput = async (code, language, input = "", timeLimit = 5000) => {
   }
 };
 
-exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 5000) => {
+exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 5000, entryFile = "") => {
   const tmpDir = path.join(os.tmpdir(), `aj_proj_${uuidv4()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -234,10 +234,51 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     }
 
     const isGTest = language === "cpp" && detectGTestProject(allFiles);
-    const relSources = sourceFiles.map((f) => q(toShellPath(path.relative(tmpDir, f))));
+
+    const normalizePath = (name) => String(name || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    const resolveSourcePath = (name) => {
+      const normalizedName = normalizePath(name);
+      if (!normalizedName) return null;
+      return sourceFiles.find((f) => {
+        const rel = toShellPath(path.relative(tmpDir, f));
+        return rel === normalizedName || path.basename(f) === normalizedName;
+      }) || null;
+    };
+
+    const fileHasMain = (filePath) => {
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (language === "cpp" || language === "c") return /\bint\s+main\s*\(/.test(content);
+        if (language === "java") return /public\s+static\s+void\s+main\s*\(/.test(content);
+      } catch (e) {
+        return false;
+      }
+      return false;
+    };
+
+    const mainSourceFiles = sourceFiles.filter((f) => fileHasMain(f));
+    const selectedEntrySource = resolveSourcePath(entryFile);
+
+    let compileSourceFiles = sourceFiles;
+    if ((language === "cpp" || language === "c") && mainSourceFiles.length > 1) {
+      if (!selectedEntrySource) {
+        return {
+          verdict: "CE",
+          output: "",
+          executionTime: 0,
+          errorMessage: `Multiple main files detected: ${mainSourceFiles.map((f) => toShellPath(path.relative(tmpDir, f))).join(", ")}. Select an entry file to run.`,
+          isGTest
+        };
+      }
+
+      const mainSet = new Set(mainSourceFiles);
+      compileSourceFiles = sourceFiles.filter((f) => f === selectedEntrySource || !mainSet.has(f));
+    }
+
+    const relSources = compileSourceFiles.map((f) => q(toShellPath(path.relative(tmpDir, f))));
 
     const resolveInputFilePath = (name) => {
-      const normalizedName = String(name || "").replace(/\\/g, "/").replace(/^\/+/, "");
+      const normalizedName = normalizePath(name);
       return allFiles.find((f) => {
         const rel = toShellPath(path.relative(tmpDir, f));
         return rel === normalizedName || path.basename(f) === normalizedName;
@@ -309,7 +350,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout ${timeoutSec} ./main.out`;
     } else if (language === "java") {
       compileCmd = `javac ${relSources.join(" ")}`;
-      const javaMainFile = sourceFiles.find((file) => {
+      const javaMainFile = selectedEntrySource || sourceFiles.find((file) => {
         try {
           const content = fs.readFileSync(file, "utf-8");
           return /public\s+static\s+void\s+main\s*\(/.test(content);

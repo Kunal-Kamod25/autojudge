@@ -137,7 +137,7 @@ exports.submit = async (req, res) => {
 
 exports.runCustom = async (req, res) => {
   try {
-    const { code, language, input = '', timeLimit } = req.body;
+    const { code, language, input = '', timeLimit, entryFile = '' } = req.body;
     const parsedLimit = Number(timeLimit);
     const customTimeLimit = Number.isFinite(parsedLimit)
       ? Math.min(Math.max(parsedLimit, 2000), 600000)
@@ -152,7 +152,7 @@ exports.runCustom = async (req, res) => {
       const ext = req.file.originalname.split('.').pop().toLowerCase();
       if (ext === 'zip') {
         // Project mode: supports multi-file C/C++ projects and file-based input access.
-        runResult = await runProjectFromZip(req.file.path, language, input, customTimeLimit);
+        runResult = await runProjectFromZip(req.file.path, language, input, customTimeLimit, entryFile);
 
         // Keep one representative source in DB for quick preview/history.
         const zip = new AdmZip(req.file.path);
@@ -261,9 +261,17 @@ exports.extractZip = async (req, res) => {
         const isInputFile = ['txt', 'in', 'input'].includes(ext) || fileName.includes('input') || fileName.includes('test');
 
         let content = '';
+        let hasMain = false;
         try {
           if (isSourceFile || isInputFile) {
             content = zip.readAsText(entry);
+            if (isSourceFile) {
+              if (language === 'cpp' || language === 'c') {
+                hasMain = /\bint\s+main\s*\(/.test(content);
+              } else if (language === 'java') {
+                hasMain = /public\s+static\s+void\s+main\s*\(/.test(content);
+              }
+            }
           }
         } catch (e) {
           content = '[Binary file or unable to read]';
@@ -273,6 +281,7 @@ exports.extractZip = async (req, res) => {
           name: fileName,
           isSourceFile,
           isInputFile,
+          hasMain,
           size: entry.header.size,
           content
         });
