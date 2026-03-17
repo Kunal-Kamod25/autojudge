@@ -71,7 +71,7 @@ exports.submit = async (req, res) => {
     let isGTest = false;
     let testResults = [];
 
-    if (testCases.length > 0) {
+    if (testCases.length > 0 || (isZipUpload && assignmentId)) {
       if (isZipUpload) {
         const projectRun = await runProjectAgainstTests(req.file.path, language, testCases);
         testResults = projectRun.testResults;
@@ -82,14 +82,14 @@ exports.submit = async (req, res) => {
     }
 
     const passed = testResults.filter(r => r.verdict === 'AC').length;
-    const totalEvaluated = isGTest ? testResults.length : testCases.length;
+    const totalEvaluated = isGTest ? testResults.length : (testCases.length || testResults.length);
     const overallVerdict = testResults.length === 0 ? 'AC' :
       testResults.some(r => r.verdict === 'CE') ? 'CE' :
       testResults.some(r => r.verdict === 'RE') ? 'RE' :
       testResults.some(r => r.verdict === 'TLE') ? 'TLE' :
       testResults.every(r => r.verdict === 'AC') ? 'AC' : 'WA';
-    const score = testCases.length > 0
-      ? (isGTest ? (overallVerdict === 'AC' ? totalScore : 0) : Math.round((passed / Math.max(testCases.length, 1)) * totalScore))
+    const score = testResults.length > 0
+      ? (isGTest ? (overallVerdict === 'AC' ? totalScore : 0) : Math.round((passed / Math.max(totalEvaluated, 1)) * totalScore))
       : 0;
 
     // AI Feedback (async - don't block response)
