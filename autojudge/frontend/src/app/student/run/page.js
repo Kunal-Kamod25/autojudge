@@ -27,6 +27,7 @@ export default function StudentRunPage() {
   const [code, setCode] = useState(TEMPLATES.cpp)
   const [input, setInput] = useState('2 3\n1 2 3\n4 5 6')
   const [selectedInputFiles, setSelectedInputFiles] = useState([])
+  const [inputExecutionMode, setInputExecutionMode] = useState('separate')
   const [file, setFile] = useState(null)
   const [zipFiles, setZipFiles] = useState([])
   const [selectedFilePreview, setSelectedFilePreview] = useState(null)
@@ -40,6 +41,7 @@ export default function StudentRunPage() {
     setFile(f)
     setZipFiles([])
     setSelectedInputFiles([])
+    setInputExecutionMode('separate')
     setSelectedFilePreview(null)
     
     if (f.name.endsWith('.zip')) {
@@ -98,14 +100,24 @@ export default function StudentRunPage() {
       }
 
       if (selectedInputFiles.length > 0) {
-        const results = []
-        for (const inputFileName of selectedInputFiles) {
-          const submission = await runOnce(`@${inputFileName}`)
-          results.push({ ...submission, inputFileName })
+        if (inputExecutionMode === 'combine') {
+          const combinedInput = selectedInputFiles
+            .map((name) => zipFiles.find((f) => f.name === name)?.content || '')
+            .join('\n')
+
+          const submission = await runOnce(combinedInput)
+          setResult({ ...submission, combinedFiles: [...selectedInputFiles] })
+          toast.success(`Ran combined input from ${selectedInputFiles.length} file(s)`)
+        } else {
+          const results = []
+          for (const inputFileName of selectedInputFiles) {
+            const submission = await runOnce(`@${inputFileName}`)
+            results.push({ ...submission, inputFileName })
+          }
+          setBatchResults(results)
+          const acCount = results.filter(r => r.verdict === 'AC').length
+          toast.success(`Ran ${results.length} test case(s). Passed: ${acCount}`)
         }
-        setBatchResults(results)
-        const acCount = results.filter(r => r.verdict === 'AC').length
-        toast.success(`Ran ${results.length} file(s). Passed: ${acCount}`)
       } else {
         const submission = await runOnce(input)
         setResult(submission)
@@ -289,6 +301,29 @@ export default function StudentRunPage() {
                 {inputFiles.length > 0 && (
                   <div>
                     <label className="text-xs font-semibold text-gray-400 block mb-1.5">Or Select One/More Input Files</label>
+
+                    {selectedInputFiles.length > 0 && (
+                      <div className="mb-2">
+                        <p className="text-xs text-gray-500 mb-1">How to run selected files</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setInputExecutionMode('separate')}
+                            className={`px-2 py-1 text-xs rounded border ${inputExecutionMode === 'separate' ? 'border-cyan text-cyan bg-cyan/10' : 'border-white/20 text-gray-400'}`}
+                          >
+                            Separate (test cases)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInputExecutionMode('combine')}
+                            className={`px-2 py-1 text-xs rounded border ${inputExecutionMode === 'combine' ? 'border-cyan text-cyan bg-cyan/10' : 'border-white/20 text-gray-400'}`}
+                          >
+                            Combine (A + B)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="bg-navy-2 border border-white/10 rounded-lg p-2 max-h-36 overflow-auto space-y-1">
                       {inputFiles.map((f, i) => (
                         <label key={i} className="flex items-center gap-2 text-xs text-gray-200 cursor-pointer">
@@ -310,7 +345,21 @@ export default function StudentRunPage() {
 
                     {selectedInputFiles.length > 0 && (
                       <div className="mt-2 bg-navy-2 border border-white/10 rounded-lg p-2 text-xs space-y-2">
-                        <p className="text-success font-semibold">Running with {selectedInputFiles.length} input file(s)</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-success font-semibold">
+                            {inputExecutionMode === 'combine'
+                              ? `Combining ${selectedInputFiles.length} input file(s) into one run`
+                              : `Running ${selectedInputFiles.length} input file(s) as test cases`
+                            }
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedInputFiles([])}
+                            className="text-xs text-gray-400 hover:text-white"
+                          >
+                            Clear
+                          </button>
+                        </div>
                         {selectedInputFiles.map((name, idx) => (
                           <div key={idx}>
                             <p className="text-cyan mb-1">{name}</p>
@@ -333,12 +382,19 @@ export default function StudentRunPage() {
 
               {batchResults.length > 0 && (
                 <div className="space-y-3">
+                  <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-sm flex items-center justify-between">
+                    <span className="text-gray-300">Test Cases Passed</span>
+                    <span className="text-cyan font-bold">
+                      {batchResults.filter((x) => x.verdict === 'AC').length}/{batchResults.length}
+                    </span>
+                  </div>
+
                   {batchResults.map((r, i) => {
                     const vv = VERDICT_STYLE[r.verdict] || VERDICT_STYLE.RE
                     return (
                       <div key={i} className="border border-white/10 rounded-lg p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs text-cyan font-semibold">Input File: {r.inputFileName}</p>
+                          <p className="text-xs text-cyan font-semibold">Test Case {i + 1}: {r.inputFileName}</p>
                           <span className={`text-xs font-semibold ${vv.text}`}>{r.verdict}</span>
                         </div>
                         <pre className="bg-navy-2 rounded-lg p-2 text-xs text-green-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.output || '(no output)'}</pre>
@@ -353,6 +409,13 @@ export default function StudentRunPage() {
 
               {result && (
                 <div className="space-y-4">
+                  {result.combinedFiles?.length > 0 && (
+                    <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs">
+                      <p className="text-cyan font-semibold mb-1">Combined Input Files ({result.combinedFiles.length})</p>
+                      <p className="text-gray-300">{result.combinedFiles.join(', ')}</p>
+                    </div>
+                  )}
+
                   <div className={`${v.bg} rounded-lg p-3 flex items-center justify-between`}>
                     <div className="flex items-center gap-2">
                       <v.icon className={`w-5 h-5 ${v.text}`} />
