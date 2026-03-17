@@ -2,7 +2,7 @@
 import { useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { useDropzone } from 'react-dropzone'
-import { FolderOpen, Play, X, Terminal, AlertCircle, CheckCircle2, Clock, Brain, FileText, Files } from 'lucide-react'
+import { FolderOpen, Play, X, Terminal, AlertCircle, CheckCircle2, Clock, Brain, Files } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import { submissionApi } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -26,18 +26,20 @@ export default function StudentRunPage() {
   const [language, setLanguage] = useState('cpp')
   const [code, setCode] = useState(TEMPLATES.cpp)
   const [input, setInput] = useState('2 3\n1 2 3\n4 5 6')
-  const [selectedInputFile, setSelectedInputFile] = useState(null)
+  const [selectedInputFiles, setSelectedInputFiles] = useState([])
   const [file, setFile] = useState(null)
   const [zipFiles, setZipFiles] = useState([])
   const [selectedFilePreview, setSelectedFilePreview] = useState(null)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState(null)
+  const [batchResults, setBatchResults] = useState([])
 
   const onDrop = useCallback((files) => {
     if (!files?.[0]) return
     const f = files[0]
     setFile(f)
     setZipFiles([])
+    setSelectedInputFiles([])
     setSelectedFilePreview(null)
     
     if (f.name.endsWith('.zip')) {
@@ -79,25 +81,37 @@ export default function StudentRunPage() {
 
     setRunning(true)
     setResult(null)
+    setBatchResults([])
 
     try {
-      // Use file if selected, otherwise use pasted input
-      let runInput = selectedInputFile ? `@${selectedInputFile}` : input
-
-      let res
-      if (file) {
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('language', language)
-        fd.append('input', runInput)
-        res = await submissionApi.runCustomFile(fd)
-      } else {
-        res = await submissionApi.runCustom({ code, language, input: runInput })
+      const runOnce = async (runInput) => {
+        if (file) {
+          const fd = new FormData()
+          fd.append('file', file)
+          fd.append('language', language)
+          fd.append('input', runInput)
+          const res = await submissionApi.runCustomFile(fd)
+          return res.data.submission
+        }
+        const res = await submissionApi.runCustom({ code, language, input: runInput })
+        return res.data.submission
       }
 
-      setResult(res.data.submission)
-      if (res.data.submission.verdict === 'AC') toast.success('Program ran successfully')
-      else toast.error(res.data.submission.verdict)
+      if (selectedInputFiles.length > 0) {
+        const results = []
+        for (const inputFileName of selectedInputFiles) {
+          const submission = await runOnce(`@${inputFileName}`)
+          results.push({ ...submission, inputFileName })
+        }
+        setBatchResults(results)
+        const acCount = results.filter(r => r.verdict === 'AC').length
+        toast.success(`Ran ${results.length} file(s). Passed: ${acCount}`)
+      } else {
+        const submission = await runOnce(input)
+        setResult(submission)
+        if (submission.verdict === 'AC') toast.success('Program ran successfully')
+        else toast.error(submission.verdict)
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Run failed')
     } finally {
@@ -263,7 +277,7 @@ export default function StudentRunPage() {
                   <textarea
                     value={input}
                     onChange={e => {
-                      setSelectedInputFile(null)
+                      setSelectedInputFiles([])
                       setInput(e.target.value)
                     }}
                     className="w-full h-28 bg-navy-2 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-cyan"
@@ -274,28 +288,37 @@ export default function StudentRunPage() {
                 {/* Option 2: Select from Files */}
                 {inputFiles.length > 0 && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-400 block mb-1.5">Or Use Input File from Project</label>
-                    <select 
-                      value={selectedInputFile || ''} 
-                      onChange={e => {
-                        if (e.target.value) {
-                          setInputMode('file')
-                          setSelectedInputFile(e.target.value)
-                        }
-                      }}
-                      className="w-full bg-navy-2 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan">
-                      <option value="">-- Select input file --</option>
+                    <label className="text-xs font-semibold text-gray-400 block mb-1.5">Or Select One/More Input Files</label>
+                    <div className="bg-navy-2 border border-white/10 rounded-lg p-2 max-h-36 overflow-auto space-y-1">
                       {inputFiles.map((f, i) => (
-                        <option key={i} value={f.name}>{f.name}</option>
+                        <label key={i} className="flex items-center gap-2 text-xs text-gray-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedInputFiles.includes(f.name)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedInputFiles(prev => [...prev, f.name])
+                              } else {
+                                setSelectedInputFiles(prev => prev.filter(name => name !== f.name))
+                              }
+                            }}
+                          />
+                          <span>{f.name}</span>
+                        </label>
                       ))}
-                    </select>
-                    
-                    {selectedInputFile && (
-                      <div className="mt-2 bg-navy-2 border border-white/10 rounded-lg p-2 text-xs">
-                        <p className="text-success font-semibold mb-1">✓ Selected: {selectedInputFile}</p>
-                        <pre className="text-gray-300 font-mono whitespace-pre-wrap break-words max-h-20 overflow-auto">
-                          {zipFiles.find(f => f.name === selectedInputFile)?.content || 'Loading...'}
-                        </pre>
+                    </div>
+
+                    {selectedInputFiles.length > 0 && (
+                      <div className="mt-2 bg-navy-2 border border-white/10 rounded-lg p-2 text-xs space-y-2">
+                        <p className="text-success font-semibold">Running with {selectedInputFiles.length} input file(s)</p>
+                        {selectedInputFiles.map((name, idx) => (
+                          <div key={idx}>
+                            <p className="text-cyan mb-1">{name}</p>
+                            <pre className="text-gray-300 font-mono whitespace-pre-wrap break-words max-h-16 overflow-auto">
+                              {zipFiles.find(f => f.name === name)?.content || 'Loading...'}
+                            </pre>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -306,7 +329,27 @@ export default function StudentRunPage() {
             <div className="card min-h-[250px]">
               <h3 className="font-bold mb-3">Run Result</h3>
 
-              {!result && <p className="text-gray-500 text-sm">Run your code to see output and errors.</p>}
+              {!result && batchResults.length === 0 && <p className="text-gray-500 text-sm">Run your code to see output and errors.</p>}
+
+              {batchResults.length > 0 && (
+                <div className="space-y-3">
+                  {batchResults.map((r, i) => {
+                    const vv = VERDICT_STYLE[r.verdict] || VERDICT_STYLE.RE
+                    return (
+                      <div key={i} className="border border-white/10 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-cyan font-semibold">Input File: {r.inputFileName}</p>
+                          <span className={`text-xs font-semibold ${vv.text}`}>{r.verdict}</span>
+                        </div>
+                        <pre className="bg-navy-2 rounded-lg p-2 text-xs text-green-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.output || '(no output)'}</pre>
+                        {r.errorMessage && (
+                          <pre className="bg-danger/10 border border-danger/30 rounded-lg p-2 text-xs text-danger font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.errorMessage}</pre>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {result && (
                 <div className="space-y-4">
