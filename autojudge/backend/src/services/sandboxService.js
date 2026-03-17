@@ -1,8 +1,9 @@
-const { exec, spawn } = require("child_process");
+const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const os = require("os");
+const AdmZip = require("adm-zip");
 
 const LANG_CONFIG = {
   cpp: { ext: "cpp", compile: (f) => `g++ -O2 -o ${f}.out ${f}.cpp`, run: (f, input) => `echo "${input}" | timeout 5 ${f}.out`, compiled: true },
@@ -12,12 +13,46 @@ const LANG_CONFIG = {
   javascript: { ext: "js", run: (f, input) => `echo "${input}" | timeout 5 node ${f}.js`, compiled: false }
 };
 
-const execPromise = (cmd, timeoutMs = 10000) => new Promise((resolve, reject) => {
-  const proc = exec(cmd, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+const execPromise = (cmd, timeoutMs = 10000, options = {}) => new Promise((resolve) => {
+  exec(cmd, { timeout: timeoutMs, maxBuffer: 1024 * 1024, cwd: options.cwd }, (err, stdout, stderr) => {
     if (err && err.killed) resolve({ stdout: "", stderr: "TIME_LIMIT_EXCEEDED", timedOut: true });
     else resolve({ stdout: stdout || "", stderr: stderr || "", exitCode: err ? err.code : 0 });
   });
 });
+
+const walkFiles = (root) => {
+  const out = [];
+  const stack = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) stack.push(full);
+      else out.push(full);
+    }
+  }
+  return out;
+};
+
+const toShellPath = (p) => p.replace(/\\/g, "/");
+const q = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
+const sanitizeInput = (value) => String(value || "").replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
+
+const detectGTestProject = (files) => {
+  const patterns = [/gtest\/gtest\.h/, /\bTEST(_F|_P)?\s*\(/, /\bRUN_ALL_TESTS\s*\(/];
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (![".cpp", ".cc", ".cxx", ".hpp", ".h"].includes(ext)) continue;
+    try {
+      const content = fs.readFileSync(file, "utf-8");
+      if (patterns.some((re) => re.test(content))) return true;
+    } catch (e) {
+      // Ignore unreadable files while scanning
+    }
+  }
+  return false;
+};
 
 exports.runCode = async (code, language, testCases) => {
   const tmpDir = path.join(os.tmpdir(), `aj_${uuidv4()}`);
@@ -144,5 +179,118 @@ exports.runWithInput = async (code, language, input = "", timeLimit = 5000) => {
     };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch(e) {}
+  }
+};
+
+exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 5000) => {
+  const tmpDir = path.join(os.tmpdir(), `aj_proj_${uuidv4()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  try {
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(tmpDir, true);
+
+    const allFiles = walkFiles(tmpDir);
+    const extMap = {
+      cpp: [".cpp", ".cc", ".cxx"],
+      c: [".c"],
+      java: [".java"],
+      python: [".py"],
+      javascript: [".js"]
+    };
+
+    const sourceExts = extMap[language];
+    if (!sourceExts) throw new Error("Unsupported language");
+
+    const sourceFiles = allFiles.filter((f) => sourceExts.includes(path.extname(f).toLowerCase()));
+    if (sourceFiles.length === 0) {
+      return { verdict: "CE", output: "", executionTime: 0, errorMessage: `No ${language} source files found in zip`, isGTest: false };
+    }
+
+    const isGTest = language === "cpp" && detectGTestProject(allFiles);
+    const relSources = sourceFiles.map((f) => q(toShellPath(path.relative(tmpDir, f))));
+
+    let runCmd = "";
+    let compileCmd = "";
+
+    if (language === "cpp") {
+      compileCmd = `g++ -std=c++17 -O2 ${relSources.join(" ")} -o main.out${isGTest ? " -lgtest -lgtest_main -pthread" : ""}`;
+      runCmd = isGTest
+        ? "timeout 10 ./main.out"
+        : `echo ${q(sanitizeInput(input))} | timeout 10 ./main.out`;
+    } else if (language === "c") {
+      compileCmd = `gcc -O2 ${relSources.join(" ")} -o main.out`;
+      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 ./main.out`;
+    } else if (language === "java") {
+      compileCmd = `javac ${relSources.join(" ")}`;
+      const javaMainFile = sourceFiles.find((file) => {
+        try {
+          const content = fs.readFileSync(file, "utf-8");
+          return /public\s+static\s+void\s+main\s*\(/.test(content);
+        } catch (e) {
+          return false;
+        }
+      }) || sourceFiles[0];
+      const mainClass = path.basename(javaMainFile, ".java");
+      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 java -cp . ${mainClass}`;
+    } else if (language === "python") {
+      const mainPy = sourceFiles.find((f) => path.basename(f).toLowerCase() === "main.py") || sourceFiles[0];
+      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 python3 ${q(toShellPath(path.relative(tmpDir, mainPy)))}`;
+    } else if (language === "javascript") {
+      const mainJs = sourceFiles.find((f) => ["main.js", "index.js"].includes(path.basename(f).toLowerCase())) || sourceFiles[0];
+      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 node ${q(toShellPath(path.relative(tmpDir, mainJs)))}`;
+    }
+
+    if (compileCmd) {
+      const compileRes = await execPromise(compileCmd, 20000, { cwd: tmpDir });
+      if (compileRes.exitCode !== 0) {
+        return {
+          verdict: "CE",
+          output: "",
+          executionTime: 0,
+          errorMessage: (compileRes.stderr || "Compilation failed").substring(0, 1000),
+          isGTest
+        };
+      }
+    }
+
+    const start = Date.now();
+    const runRes = await execPromise(runCmd, timeLimit + 5000, { cwd: tmpDir });
+    const executionTime = Date.now() - start;
+
+    if (runRes.timedOut) {
+      return { verdict: "TLE", output: "", executionTime, errorMessage: "Time limit exceeded", isGTest };
+    }
+
+    // In Google Test mode, non-zero exit means tests failed.
+    if (isGTest) {
+      return {
+        verdict: runRes.exitCode === 0 ? "AC" : "WA",
+        output: (runRes.stdout || "").trim(),
+        executionTime,
+        errorMessage: runRes.stderr ? runRes.stderr.substring(0, 1000) : "",
+        isGTest
+      };
+    }
+
+    if (runRes.exitCode !== 0 && runRes.stderr && !runRes.stdout) {
+      return {
+        verdict: "RE",
+        output: "",
+        executionTime,
+        errorMessage: runRes.stderr.substring(0, 1000),
+        isGTest
+      };
+    }
+
+    return {
+      verdict: "AC",
+      output: (runRes.stdout || "").trim(),
+      executionTime,
+      errorMessage: runRes.stderr ? runRes.stderr.substring(0, 1000) : "",
+      isGTest
+    };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
   }
 };

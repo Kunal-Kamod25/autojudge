@@ -86,7 +86,7 @@ export default function StudentRunPage() {
       <div className="max-w-7xl mx-auto w-full px-6 py-6">
         <div className="mb-5">
           <h1 className="text-2xl font-black">Run My Code</h1>
-          <p className="text-gray-400 text-sm mt-1">Upload your own C++ file or paste code, add custom input, and run instantly.</p>
+          <p className="text-gray-400 text-sm mt-1">Upload a single file or ZIP project (.cpp/.hpp supported), add input, and run instantly.</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-6">
@@ -157,6 +157,7 @@ export default function StudentRunPage() {
                     <div className="flex items-center gap-2">
                       <v.icon className={`w-5 h-5 ${v.text}`} />
                       <span className={`font-bold ${v.text}`}>{result.verdict} - {v.label}</span>
+                      {result.isGTest && <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-cyan border border-cyan/30">Google Test</span>}
                     </div>
                     <span className="text-xs text-gray-400">{result.executionTime || 0} ms</span>
                   </div>

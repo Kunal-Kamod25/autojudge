@@ -1,7 +1,7 @@
 const Submission = require('../models/Submission');
 const Assignment = require('../models/Assignment');
 const User = require('../models/User');
-const { runCode, runWithInput } = require('../services/sandboxService');
+const { runCode, runWithInput, runProjectFromZip } = require('../services/sandboxService');
 const { generateFeedback, detectPlagiarism } = require('../services/aiService');
 const { generateSubmissionReport } = require('../services/pdfService');
 const fs = require('fs');
@@ -108,14 +108,29 @@ exports.runCustom = async (req, res) => {
   try {
     const { code, language, input = '' } = req.body;
     let finalCode = code;
+    let runResult = null;
+
+    if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
 
     // Handle file upload for custom run
     if (req.file) {
       const ext = req.file.originalname.split('.').pop().toLowerCase();
       if (ext === 'zip') {
+        // Project mode: supports multi-file C/C++ projects and file-based input access.
+        runResult = await runProjectFromZip(req.file.path, language, input);
+
+        // Keep one representative source in DB for quick preview/history.
         const zip = new AdmZip(req.file.path);
         const entries = zip.getEntries().filter(e => !e.isDirectory);
-        const codeEntry = entries.find(e => ['cpp','c','py','java','js'].includes(e.entryName.split('.').pop()));
+        const sourceExtByLang = {
+          cpp: ['cpp', 'cc', 'cxx'],
+          c: ['c'],
+          python: ['py'],
+          java: ['java'],
+          javascript: ['js']
+        };
+        const allowedExt = sourceExtByLang[language] || [];
+        const codeEntry = entries.find(e => allowedExt.includes((e.entryName.split('.').pop() || '').toLowerCase()));
         if (codeEntry) finalCode = zip.readAsText(codeEntry);
         else return res.status(400).json({ success: false, message: 'No valid code file in zip' });
       } else {
@@ -124,9 +139,7 @@ exports.runCustom = async (req, res) => {
     }
 
     if (!finalCode) return res.status(400).json({ success: false, message: 'No code provided' });
-    if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
-
-    const runResult = await runWithInput(finalCode, language, input);
+    if (!runResult) runResult = await runWithInput(finalCode, language, input);
 
     const submission = await Submission.create({
       student: req.user._id,
@@ -170,6 +183,7 @@ exports.runCustom = async (req, res) => {
         output: runResult.output,
         errorMessage: runResult.errorMessage,
         executionTime: runResult.executionTime,
+        isGTest: !!runResult.isGTest,
         language,
         input,
         testResults: submission.testResults,
