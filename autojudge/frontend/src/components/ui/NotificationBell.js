@@ -5,6 +5,7 @@ import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react'
 import { notificationApi } from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
 import { io } from 'socket.io-client'
+import { SOCKET_URL } from '@/config'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -33,7 +34,7 @@ export default function NotificationBell() {
   useEffect(() => {
     load()
     // Socket real-time
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', { withCredentials: true })
+    const socket = io(SOCKET_URL, { withCredentials: true })
     if (user?._id) socket.emit('join-room', user._id)
     socket.on('notification', (n) => {
       setNotifications(p => [n, ...p].slice(0, 15))

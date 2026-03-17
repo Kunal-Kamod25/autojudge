@@ -10,6 +10,7 @@ import Navbar from '@/components/layout/Navbar'
 import toast from 'react-hot-toast'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '@/lib/store'
+import { SOCKET_URL } from '@/config'
 
 const LANG_TEMPLATES = {
   cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Your code here\n    return 0;\n}',
@@ -43,7 +44,7 @@ export default function AssignmentPage() {
 
   useEffect(() => {
     assignmentApi.getOne(id).then(r => setAssignment(r.data.assignment)).catch(() => toast.error('Assignment not found'))
-    const s = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', { withCredentials: true })
+    const s = io(SOCKET_URL, { withCredentials: true })
     if (user?._id) s.emit('join-room', user._id)
     s.on('submission-start', () => setLiveUpdate('Running test cases...'))
     s.on('submission-complete', (d) => { setLiveUpdate(''); setResult(p => p ? { ...p, aiFeedback: d.feedback } : p) })
