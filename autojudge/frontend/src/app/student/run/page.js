@@ -26,7 +26,6 @@ export default function StudentRunPage() {
   const [language, setLanguage] = useState('cpp')
   const [code, setCode] = useState(TEMPLATES.cpp)
   const [input, setInput] = useState('2 3\n1 2 3\n4 5 6')
-  const [inputMode, setInputMode] = useState('paste') // 'paste' or 'file'
   const [selectedInputFile, setSelectedInputFile] = useState(null)
   const [file, setFile] = useState(null)
   const [zipFiles, setZipFiles] = useState([])
@@ -82,10 +81,8 @@ export default function StudentRunPage() {
     setResult(null)
 
     try {
-      let runInput = input
-      if (inputMode === 'file' && selectedInputFile) {
-        runInput = `@${selectedInputFile}`
-      }
+      // Use file if selected, otherwise use pasted input
+      let runInput = selectedInputFile ? `@${selectedInputFile}` : input
 
       let res
       if (file) {
@@ -224,49 +221,86 @@ export default function StudentRunPage() {
           {/* Input & Results Panel */}
           <div className="space-y-6">
             <div className="card">
-              <h3 className="font-bold mb-3 flex items-center gap-2"><Terminal className="w-4 h-4 text-cyan" /> Input</h3>
+              <h3 className="font-bold mb-3 flex items-center gap-2"><Terminal className="w-4 h-4 text-cyan" /> Input & Project Files</h3>
               
-              {inputFiles.length > 0 && (
-                <div className="mb-3">
-                  <div className="flex gap-2 mb-2">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="radio" value="paste" checked={inputMode === 'paste'} onChange={e => setInputMode(e.target.value)} />
-                      Paste
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="radio" value="file" checked={inputMode === 'file'} onChange={e => setInputMode(e.target.value)} />
-                      From File
-                    </label>
+              {/* Project Files Summary */}
+              {zipFiles.length > 0 && (
+                <div className="mb-4 p-3 bg-navy-2 border border-white/10 rounded-lg text-xs space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan font-semibold">📁 Project Files:</span>
+                    <span className="text-gray-400">{sourceFiles.length} source, {inputFiles.length} input</span>
                   </div>
-                  {inputMode === 'file' && (
-                    <select value={selectedInputFile || ''} onChange={e => setSelectedInputFile(e.target.value)}
-                      className="w-full bg-navy-2 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-cyan mb-2">
-                      <option value="">Select input file...</option>
-                      {inputFiles.map((f, i) => (
-                        <option key={i} value={f.name}>{f.name}</option>
-                      ))}
-                    </select>
+                  
+                  {sourceFiles.length > 0 && (
+                    <div>
+                      <p className="text-gray-500">Source Files:</p>
+                      <div className="ml-2 space-y-1">
+                        {sourceFiles.map((f, i) => (
+                          <p key={i} className="text-cyan">📄 {f.name}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {inputFiles.length > 0 && (
+                    <div>
+                      <p className="text-gray-500">Input Files:</p>
+                      <div className="ml-2 space-y-1">
+                        {inputFiles.map((f, i) => (
+                          <p key={i} className="text-success">📋 {f.name}</p>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
 
-              {inputMode === 'paste' && (
-                <textarea
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  className="w-full h-32 bg-navy-2 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-cyan"
-                  placeholder="Paste your input here"
-                />
-              )}
-
-              {inputMode === 'file' && selectedInputFile && (
-                <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs">
-                  <p className="text-gray-400 mb-2">Preview:</p>
-                  <pre className="text-gray-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">
-                    {zipFiles.find(f => f.name === selectedInputFile)?.content || 'Loading...'}
-                  </pre>
+              {/* Input Options - Always Show Both */}
+              <div className="space-y-3">
+                {/* Option 1: Paste Input */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-400 block mb-1.5">Type Input Manually</label>
+                  <textarea
+                    value={input}
+                    onChange={e => {
+                      setSelectedInputFile(null)
+                      setInput(e.target.value)
+                    }}
+                    className="w-full h-28 bg-navy-2 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-cyan"
+                    placeholder="Enter test input here or select a file below"
+                  />
                 </div>
-              )}
+
+                {/* Option 2: Select from Files */}
+                {inputFiles.length > 0 && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-400 block mb-1.5">Or Use Input File from Project</label>
+                    <select 
+                      value={selectedInputFile || ''} 
+                      onChange={e => {
+                        if (e.target.value) {
+                          setInputMode('file')
+                          setSelectedInputFile(e.target.value)
+                        }
+                      }}
+                      className="w-full bg-navy-2 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan">
+                      <option value="">-- Select input file --</option>
+                      {inputFiles.map((f, i) => (
+                        <option key={i} value={f.name}>{f.name}</option>
+                      ))}
+                    </select>
+                    
+                    {selectedInputFile && (
+                      <div className="mt-2 bg-navy-2 border border-white/10 rounded-lg p-2 text-xs">
+                        <p className="text-success font-semibold mb-1">✓ Selected: {selectedInputFile}</p>
+                        <pre className="text-gray-300 font-mono whitespace-pre-wrap break-words max-h-20 overflow-auto">
+                          {zipFiles.find(f => f.name === selectedInputFile)?.content || 'Loading...'}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="card min-h-[250px]">
