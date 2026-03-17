@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+*.log
+dist/
+.next/
+uploads/
+logs/
+*.o
+*.out
+*.class
+.DS_Store
