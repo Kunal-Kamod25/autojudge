@@ -2,7 +2,7 @@
 import { useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { useDropzone } from 'react-dropzone'
-import { FolderOpen, Play, X, Terminal, AlertCircle, CheckCircle2, Clock, Brain } from 'lucide-react'
+import { FolderOpen, Play, X, Terminal, AlertCircle, CheckCircle2, Clock, Brain, FileText, Files } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import { submissionApi } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -26,15 +26,40 @@ export default function StudentRunPage() {
   const [language, setLanguage] = useState('cpp')
   const [code, setCode] = useState(TEMPLATES.cpp)
   const [input, setInput] = useState('2 3\n1 2 3\n4 5 6')
+  const [inputMode, setInputMode] = useState('paste') // 'paste' or 'file'
+  const [selectedInputFile, setSelectedInputFile] = useState(null)
   const [file, setFile] = useState(null)
+  const [zipFiles, setZipFiles] = useState([])
+  const [selectedFilePreview, setSelectedFilePreview] = useState(null)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState(null)
 
   const onDrop = useCallback((files) => {
     if (!files?.[0]) return
-    setFile(files[0])
-    toast.success(`Loaded: ${files[0].name}`)
+    const f = files[0]
+    setFile(f)
+    setZipFiles([])
+    setSelectedFilePreview(null)
+    
+    if (f.name.endsWith('.zip')) {
+      extractZipFiles(f)
+    } else {
+      toast.success(`Loaded: ${f.name}`)
+    }
   }, [])
+
+  const extractZipFiles = async (zipFile) => {
+    try {
+      const fd = new FormData()
+      fd.append('file', zipFile)
+      fd.append('language', language)
+      const res = await submissionApi.extractZip(fd)
+      setZipFiles(res.data.files)
+      toast.success(`ZIP loaded: ${res.data.files.length} files`)
+    } catch (err) {
+      toast.error('Failed to extract ZIP')
+    }
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -57,15 +82,20 @@ export default function StudentRunPage() {
     setResult(null)
 
     try {
+      let runInput = input
+      if (inputMode === 'file' && selectedInputFile) {
+        runInput = `@${selectedInputFile}`
+      }
+
       let res
       if (file) {
         const fd = new FormData()
         fd.append('file', file)
         fd.append('language', language)
-        fd.append('input', input)
+        fd.append('input', runInput)
         res = await submissionApi.runCustomFile(fd)
       } else {
-        res = await submissionApi.runCustom({ code, language, input })
+        res = await submissionApi.runCustom({ code, language, input: runInput })
       }
 
       setResult(res.data.submission)
@@ -80,17 +110,21 @@ export default function StudentRunPage() {
 
   const v = result ? (VERDICT_STYLE[result.verdict] || VERDICT_STYLE.RE) : null
 
+  const sourceFiles = zipFiles.filter(f => f.isSourceFile)
+  const inputFiles = zipFiles.filter(f => f.isInputFile)
+
   return (
     <div className="min-h-screen bg-navy flex flex-col">
       <Navbar />
       <div className="max-w-7xl mx-auto w-full px-6 py-6">
         <div className="mb-5">
           <h1 className="text-2xl font-black">Run My Code</h1>
-          <p className="text-gray-400 text-sm mt-1">Upload a single file or ZIP project (.cpp/.hpp supported), add input, and run instantly.</p>
+          <p className="text-gray-400 text-sm mt-1">Upload single file or ZIP project. See files, select input sources, and run instantly.</p>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="card p-0 overflow-hidden">
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Editor Panel */}
+          <div className="lg:col-span-2 card p-0 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-navy-2">
               <select value={language} onChange={e => handleLanguage(e.target.value)}
                 className="bg-navy-light border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-cyan">
@@ -102,7 +136,7 @@ export default function StudentRunPage() {
                 <FolderOpen className="w-4 h-4" /> {file ? file.name.substring(0, 24) : 'Upload File/ZIP'}
               </div>
 
-              {file && <button onClick={() => setFile(null)} className="text-gray-500 hover:text-danger"><X className="w-4 h-4" /></button>}
+              {file && <button onClick={() => { setFile(null); setZipFiles([]); }} className="text-gray-500 hover:text-danger"><X className="w-4 h-4" /></button>}
 
               <button onClick={handleRun} disabled={running}
                 className="ml-auto btn-primary py-2 flex items-center gap-2">
@@ -111,7 +145,7 @@ export default function StudentRunPage() {
             </div>
 
             {!file && (
-              <div className="h-[420px]">
+              <div className="flex-1">
                 <Editor
                   height="100%"
                   language={language === 'cpp' ? 'cpp' : language === 'javascript' ? 'javascript' : language}
@@ -128,22 +162,111 @@ export default function StudentRunPage() {
               </div>
             )}
 
-            {file && (
+            {file && zipFiles.length > 0 && (
+              <div className="flex-1 flex flex-col">
+                <div className="border-b border-white/10 bg-navy-2 px-4 py-2 flex gap-2 overflow-x-auto">
+                  <button onClick={() => setSelectedFilePreview(null)}
+                    className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${!selectedFilePreview ? 'bg-cyan text-navy' : 'text-gray-400 hover:text-white'}`}>
+                    Overview
+                  </button>
+                  {sourceFiles.map((f, i) => (
+                    <button key={i} onClick={() => setSelectedFilePreview(f.name)}
+                      className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${selectedFilePreview === f.name ? 'bg-cyan text-navy' : 'text-gray-400 hover:text-white'}`}>
+                      {f.name.split('/').pop()}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex-1 overflow-auto p-4">
+                  {!selectedFilePreview ? (
+                    <div className="space-y-4 text-sm">
+                      {sourceFiles.length > 0 && (
+                        <div>
+                          <p className="text-cyan font-semibold mb-2 flex items-center gap-2"><Files className="w-4 h-4" /> Source Files ({sourceFiles.length})</p>
+                          <div className="space-y-1 ml-2">
+                            {sourceFiles.map((f, i) => (
+                              <p key={i} className="text-gray-300 cursor-pointer hover:text-cyan" onClick={() => setSelectedFilePreview(f.name)}>
+                                📄 {f.name}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {inputFiles.length > 0 && (
+                        <div>
+                          <p className="text-success font-semibold mb-2 flex items-center gap-2"><Terminal className="w-4 h-4" /> Input Files ({inputFiles.length})</p>
+                          <div className="space-y-1 ml-2">
+                            {inputFiles.map((f, i) => (
+                              <p key={i} className="text-gray-300">📋 {f.name}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {zipFiles.length === sourceFiles.length + inputFiles.length ? null : (
+                        <p className="text-gray-500 text-xs">{zipFiles.length} total files in project</p>
+                      )}
+                    </div>
+                  ) : (
+                    <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words bg-navy-2 p-3 rounded">
+                      {zipFiles.find(f => f.name === selectedFilePreview)?.content || 'File content not available'}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {file && zipFiles.length === 0 && (
               <div className="p-6 text-center text-gray-400">
-                File mode enabled. Click Run to execute your uploaded file.
+                Extracting ZIP file...
               </div>
             )}
           </div>
 
+          {/* Input & Results Panel */}
           <div className="space-y-6">
             <div className="card">
-              <h3 className="font-bold mb-3 flex items-center gap-2"><Terminal className="w-4 h-4 text-cyan" /> Custom Input</h3>
-              <textarea
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                className="w-full h-40 bg-navy-2 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-cyan"
-                placeholder="Paste your input here"
-              />
+              <h3 className="font-bold mb-3 flex items-center gap-2"><Terminal className="w-4 h-4 text-cyan" /> Input</h3>
+              
+              {inputFiles.length > 0 && (
+                <div className="mb-3">
+                  <div className="flex gap-2 mb-2">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="radio" value="paste" checked={inputMode === 'paste'} onChange={e => setInputMode(e.target.value)} />
+                      Paste
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="radio" value="file" checked={inputMode === 'file'} onChange={e => setInputMode(e.target.value)} />
+                      From File
+                    </label>
+                  </div>
+                  {inputMode === 'file' && (
+                    <select value={selectedInputFile || ''} onChange={e => setSelectedInputFile(e.target.value)}
+                      className="w-full bg-navy-2 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-cyan mb-2">
+                      <option value="">Select input file...</option>
+                      {inputFiles.map((f, i) => (
+                        <option key={i} value={f.name}>{f.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {inputMode === 'paste' && (
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  className="w-full h-32 bg-navy-2 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-cyan"
+                  placeholder="Paste your input here"
+                />
+              )}
+
+              {inputMode === 'file' && selectedInputFile && (
+                <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs">
+                  <p className="text-gray-400 mb-2">Preview:</p>
+                  <pre className="text-gray-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">
+                    {zipFiles.find(f => f.name === selectedInputFile)?.content || 'Loading...'}
+                  </pre>
+                </div>
+              )}
             </div>
 
             <div className="card min-h-[250px]">
@@ -164,13 +287,13 @@ export default function StudentRunPage() {
 
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Program Output</p>
-                    <pre className="bg-navy-2 rounded-lg p-3 text-sm text-green-300 font-mono whitespace-pre-wrap break-words">{result.output || '(no output)'}</pre>
+                    <pre className="bg-navy-2 rounded-lg p-3 text-sm text-green-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{result.output || '(no output)'}</pre>
                   </div>
 
                   {result.errorMessage && (
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Error</p>
-                      <pre className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm text-danger font-mono whitespace-pre-wrap break-words">{result.errorMessage}</pre>
+                      <pre className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm text-danger font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{result.errorMessage}</pre>
                     </div>
                   )}
 

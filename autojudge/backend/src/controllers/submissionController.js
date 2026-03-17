@@ -226,6 +226,62 @@ exports.runCustom = async (req, res) => {
   }
 };
 
+exports.extractZip = async (req, res) => {
+  try {
+    if (!req.file || !req.file.originalname.endsWith('.zip')) {
+      return res.status(400).json({ success: false, message: 'ZIP file required' });
+    }
+
+    const { language } = req.body;
+    if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
+
+    const zip = new AdmZip(req.file.path);
+    const entries = zip.getEntries();
+
+    const files = [];
+    const sourceExtByLang = {
+      cpp: ['cpp', 'cc', 'cxx', 'hpp', 'h'],
+      c: ['c', 'h'],
+      python: ['py'],
+      java: ['java'],
+      javascript: ['js']
+    };
+    const allowedSourceExt = sourceExtByLang[language] || ['cpp', 'c', 'py', 'java', 'js'];
+
+    entries.forEach(entry => {
+      if (!entry.isDirectory) {
+        const fileName = entry.entryName;
+        const ext = fileName.split('.').pop().toLowerCase();
+        const isSourceFile = allowedSourceExt.includes(ext);
+        const isInputFile = ['txt', 'in', 'input'].includes(ext) || fileName.includes('input') || fileName.includes('test');
+
+        let content = '';
+        try {
+          if (isSourceFile || isInputFile) {
+            content = zip.readAsText(entry);
+            // Truncate large files for preview (first 500 chars)
+            if (content.length > 500) content = content.substring(0, 500) + '...\n[content truncated]';
+          }
+        } catch (e) {
+          content = '[Binary file or unable to read]';
+        }
+
+        files.push({
+          name: fileName,
+          isSourceFile,
+          isInputFile,
+          size: entry.header.size,
+          content
+        });
+      }
+    });
+
+    res.json({ success: true, files });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 exports.getSubmission = async (req, res) => {
   try {
     const sub = await Submission.findById(req.params.id).populate('student', 'name email avatar').populate('assignment', 'title');

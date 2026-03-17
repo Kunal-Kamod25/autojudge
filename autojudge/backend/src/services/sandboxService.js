@@ -210,6 +210,21 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     const isGTest = language === "cpp" && detectGTestProject(allFiles);
     const relSources = sourceFiles.map((f) => q(toShellPath(path.relative(tmpDir, f))));
 
+    // Support input from file: if input starts with "@filename", read from that file
+    let actualInput = input;
+    if (input.startsWith("@")) {
+      const inputFileName = input.substring(1);
+      const inputFilePath = allFiles.find(f => path.basename(f) === inputFileName);
+      if (inputFilePath) {
+        try {
+          actualInput = fs.readFileSync(inputFilePath, 'utf-8');
+        } catch (e) {
+          // If file read fails, use empty input
+          actualInput = "";
+        }
+      }
+    }
+
     let runCmd = "";
     let compileCmd = "";
 
@@ -217,10 +232,10 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       compileCmd = `g++ -std=c++17 -O2 ${relSources.join(" ")} -o main.out${isGTest ? " -lgtest -lgtest_main -pthread" : ""}`;
       runCmd = isGTest
         ? "timeout 10 ./main.out"
-        : `echo ${q(sanitizeInput(input))} | timeout 10 ./main.out`;
+        : `echo ${q(sanitizeInput(actualInput))} | timeout 10 ./main.out`;
     } else if (language === "c") {
       compileCmd = `gcc -O2 ${relSources.join(" ")} -o main.out`;
-      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 ./main.out`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 ./main.out`;
     } else if (language === "java") {
       compileCmd = `javac ${relSources.join(" ")}`;
       const javaMainFile = sourceFiles.find((file) => {
@@ -232,13 +247,13 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
         }
       }) || sourceFiles[0];
       const mainClass = path.basename(javaMainFile, ".java");
-      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 java -cp . ${mainClass}`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 java -cp . ${mainClass}`;
     } else if (language === "python") {
       const mainPy = sourceFiles.find((f) => path.basename(f).toLowerCase() === "main.py") || sourceFiles[0];
-      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 python3 ${q(toShellPath(path.relative(tmpDir, mainPy)))}`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 python3 ${q(toShellPath(path.relative(tmpDir, mainPy)))}`;
     } else if (language === "javascript") {
       const mainJs = sourceFiles.find((f) => ["main.js", "index.js"].includes(path.basename(f).toLowerCase())) || sourceFiles[0];
-      runCmd = `echo ${q(sanitizeInput(input))} | timeout 10 node ${q(toShellPath(path.relative(tmpDir, mainJs)))}`;
+      runCmd = `echo ${q(sanitizeInput(actualInput))} | timeout 10 node ${q(toShellPath(path.relative(tmpDir, mainJs)))}`;
     }
 
     if (compileCmd) {

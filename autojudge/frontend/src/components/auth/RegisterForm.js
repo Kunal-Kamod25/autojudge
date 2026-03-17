@@ -79,7 +79,7 @@ export default function RegisterPage() {
       const { data } = await authApi.register(form)
       login(data.user, data.accessToken)
       toast.success('Account created! Welcome to AutoJudge 🎉')
-      router.push(data.user.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard')
+      router.push('/auth/login')
     } catch (err) {
       toast.error(err.response?.data?.message || 'Registration failed')
     } finally { setLoading(false) }
