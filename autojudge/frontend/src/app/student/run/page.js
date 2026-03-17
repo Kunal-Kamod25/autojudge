@@ -22,6 +22,56 @@ const VERDICT_STYLE = {
   TLE: { text: 'text-warning', bg: 'bg-warning/10', icon: Clock, label: 'Time Limit Exceeded' }
 }
 
+const parseGTestStats = (output = '', errorMessage = '') => {
+  const text = `${output}\n${errorMessage}`;
+  const passedMatch = text.match(/\[\s*PASSED\s*\]\s+(\d+)/i);
+  const failedMatch = text.match(/\[\s*FAILED\s*\]\s+(\d+)/i);
+  const passed = passedMatch ? Number(passedMatch[1]) : 0;
+  const failed = failedMatch ? Number(failedMatch[1]) : 0;
+  const total = Math.max(passed + failed, passed, failed);
+  return { passed, failed, total };
+};
+
+const buildAxBPairs = (fileNames = []) => {
+  const sorted = [...fileNames].sort((a, b) => a.localeCompare(b));
+  const leftMap = new Map();
+  const rightMap = new Map();
+
+  const splitBySide = (fullName) => {
+    const base = fullName.split('/').pop().toLowerCase();
+    const ext = (base.match(/\.[^.]+$/) || [''])[0];
+
+    const left1 = base.match(/^(.*?)(left)\.[^.]+$/i);
+    if (left1) return { side: 'left', key: `${left1[1]}${ext}` };
+    const right1 = base.match(/^(.*?)(right)\.[^.]+$/i);
+    if (right1) return { side: 'right', key: `${right1[1]}${ext}` };
+
+    const left2 = base.match(/^(.*?)[_-]?l\.[^.]+$/i);
+    if (left2) return { side: 'left', key: `${left2[1]}${ext}` };
+    const right2 = base.match(/^(.*?)[_-]?r\.[^.]+$/i);
+    if (right2) return { side: 'right', key: `${right2[1]}${ext}` };
+
+    return { side: 'unknown', key: base };
+  };
+
+  for (const name of sorted) {
+    const parsed = splitBySide(name);
+    if (parsed.side === 'left') leftMap.set(parsed.key, name);
+    if (parsed.side === 'right') rightMap.set(parsed.key, name);
+  }
+
+  const keys = [...leftMap.keys()].filter((k) => rightMap.has(k));
+  if (keys.length > 0) {
+    return keys.map((k) => [leftMap.get(k), rightMap.get(k)]);
+  }
+
+  const pairs = [];
+  for (let i = 0; i + 1 < sorted.length; i += 2) {
+    pairs.push([sorted[i], sorted[i + 1]]);
+  }
+  return pairs;
+};
+
 export default function StudentRunPage() {
   const [language, setLanguage] = useState('cpp')
   const [code, setCode] = useState(TEMPLATES.cpp)
@@ -112,10 +162,36 @@ export default function StudentRunPage() {
           const submission = await runOnce(combinedInputMarker)
           setResult({ ...submission, combinedFiles: [...selectedInputFiles] })
           toast.success(`Ran combined input from ${selectedInputFiles.length} file(s)`)
+        } else if (inputExecutionMode === 'pair') {
+          if (selectedInputFiles.length < 2 || selectedInputFiles.length % 2 !== 0) {
+            toast.error('Ax=b pair mode needs an even number of input files (L + R for each case)')
+            return
+          }
+
+          const pairs = buildAxBPairs(selectedInputFiles)
+          const results = []
+          for (const [leftFile, rightFile] of pairs) {
+            const submission = await runOnce(`@@${leftFile}||${rightFile}`)
+            if (submission.isGTest) {
+              setResult(submission)
+              toast.success('Google Test suite executed')
+              return
+            }
+            results.push({ ...submission, inputFileName: `${leftFile} + ${rightFile}` })
+          }
+
+          setBatchResults(results)
+          const acCount = results.filter(r => r.verdict === 'AC').length
+          toast.success(`Ran ${results.length} Ax=b test case(s). Passed: ${acCount}`)
         } else {
           const results = []
           for (const inputFileName of selectedInputFiles) {
             const submission = await runOnce(`@${inputFileName}`)
+            if (submission.isGTest) {
+              setResult(submission)
+              toast.success('Google Test suite executed')
+              return
+            }
             results.push({ ...submission, inputFileName })
           }
           setBatchResults(results)
@@ -357,6 +433,15 @@ export default function StudentRunPage() {
                           >
                             Combine (A + B)
                           </button>
+                          {selectedInputFiles.length >= 4 && (
+                            <button
+                              type="button"
+                              onClick={() => setInputExecutionMode('pair')}
+                              className={`px-2 py-1 text-xs rounded border ${inputExecutionMode === 'pair' ? 'border-cyan text-cyan bg-cyan/10' : 'border-white/20 text-gray-400'}`}
+                            >
+                              Pair Ax=b cases
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -395,6 +480,8 @@ export default function StudentRunPage() {
                           <p className="text-success font-semibold">
                             {inputExecutionMode === 'combine'
                               ? `Combining ${selectedInputFiles.length} input file(s) into one run`
+                              : inputExecutionMode === 'pair'
+                                ? `Running ${Math.floor(selectedInputFiles.length / 2)} Ax=b paired test case(s)`
                               : `Running ${selectedInputFiles.length} input file(s) as test cases`
                             }
                           </p>
@@ -479,6 +566,16 @@ export default function StudentRunPage() {
                     <span className="text-gray-300">Test Cases Passed</span>
                     <span className="text-cyan font-bold">{result.verdict === 'AC' ? '1/1' : '0/1'}</span>
                   </div>
+
+                  {result.isGTest && (() => {
+                    const stats = parseGTestStats(result.output || '', result.errorMessage || '')
+                    return (
+                      <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs flex items-center justify-between">
+                        <span className="text-gray-300">Google Test Passed</span>
+                        <span className="text-cyan font-bold">{stats.passed}/{stats.total || '?'}</span>
+                      </div>
+                    )
+                  })()}
 
                   <div className="bg-navy-2 border border-white/10 rounded-lg p-3 text-xs">
                     <p className="text-gray-400 mb-1">Estimated Time Complexity</p>
