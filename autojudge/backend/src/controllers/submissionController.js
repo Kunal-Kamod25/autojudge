@@ -256,14 +256,26 @@ exports.extractZip = async (req, res) => {
     entries.forEach(entry => {
       if (!entry.isDirectory) {
         const fileName = entry.entryName;
+        const lowerName = fileName.toLowerCase();
         const ext = fileName.split('.').pop().toLowerCase();
         const isSourceFile = allowedSourceExt.includes(ext);
-        const isInputFile = ['txt', 'in', 'input'].includes(ext) || fileName.includes('input') || fileName.includes('test');
+        const isExpectedFile = ['out', 'ans'].includes(ext)
+          || lowerName.includes('expected')
+          || lowerName.includes('output')
+          || lowerName.includes('answer')
+          || lowerName.includes('_out')
+          || lowerName.includes('_ans');
+        const isInputFile = !isExpectedFile && (
+          ['txt', 'in', 'input'].includes(ext)
+          || lowerName.includes('input')
+          || lowerName.includes('test')
+          || /(?:^|[\/_-])[ksm](?:left|right|l|r)?\.txt$/i.test(lowerName)
+        );
 
         let content = '';
         let hasMain = false;
         try {
-          if (isSourceFile || isInputFile) {
+          if (isSourceFile || isInputFile || isExpectedFile) {
             content = zip.readAsText(entry);
             if (isSourceFile) {
               if (language === 'cpp' || language === 'c') {
@@ -281,6 +293,7 @@ exports.extractZip = async (req, res) => {
           name: fileName,
           isSourceFile,
           isInputFile,
+          isExpectedFile,
           hasMain,
           size: entry.header.size,
           content

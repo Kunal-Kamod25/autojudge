@@ -17,6 +17,7 @@ const TEMPLATES = {
 
 const VERDICT_STYLE = {
   AC: { text: 'text-success', bg: 'bg-success/10', icon: CheckCircle2, label: 'Ran successfully' },
+  WA: { text: 'text-warning', bg: 'bg-warning/10', icon: AlertCircle, label: 'Wrong Answer' },
   CE: { text: 'text-purple', bg: 'bg-purple/10', icon: AlertCircle, label: 'Compilation Error' },
   RE: { text: 'text-danger', bg: 'bg-danger/10', icon: AlertCircle, label: 'Runtime Error' },
   TLE: { text: 'text-warning', bg: 'bg-warning/10', icon: Clock, label: 'Time Limit Exceeded' }
@@ -73,6 +74,16 @@ const buildAxBPairs = (fileNames = []) => {
   }
   return pairs;
 };
+
+const normalizeCaseKey = (fullName = '') => {
+  const base = fullName.split('/').pop().toLowerCase().replace(/\.[^.]+$/, '');
+  const cleaned = base
+    .replace(/(left|right|input|output|expected|answer|ans|out)/g, '')
+    .replace(/[_\-\s]+/g, '');
+  return cleaned || base;
+};
+
+const normalizedText = (s = '') => String(s).replace(/\r\n/g, '\n').trim();
 
 export default function StudentRunPage() {
   const [language, setLanguage] = useState('cpp')
@@ -144,6 +155,10 @@ export default function StudentRunPage() {
     setBatchResults([])
 
     try {
+      const expectedByKey = new Map(
+        expectedFiles.map((f) => [normalizeCaseKey(f.name), f])
+      )
+
       const runOnce = async (runInput, entryOverride = '') => {
         if (file) {
           const fd = new FormData()
@@ -164,12 +179,24 @@ export default function StudentRunPage() {
         ? mainSourceFiles.map((f) => f.name)
         : [entryFile].filter(Boolean)
 
-      const withEntryLabel = (submission, inputLabel, entryTarget) => {
+      const withEntryLabel = (submission, inputLabel, entryTarget, caseKey = '') => {
         const shortEntry = entryTarget ? entryTarget.split('/').pop() : ''
+        const expectedCase = caseKey ? expectedByKey.get(caseKey) : null
+        const expectedOutput = expectedCase ? normalizedText(expectedCase.content || '') : ''
+        const actualOutput = normalizedText(submission.output || '')
+
+        let judgedVerdict = submission.verdict
+        if (expectedCase && submission.verdict === 'AC') {
+          judgedVerdict = actualOutput === expectedOutput ? 'AC' : 'WA'
+        }
+
         return {
           ...submission,
+          verdict: judgedVerdict,
           inputFileName: inputLabel,
-          entryFileName: shortEntry
+          entryFileName: shortEntry,
+          expectedOutput,
+          expectedFileName: expectedCase?.name || ''
         }
       }
 
@@ -185,7 +212,8 @@ export default function StudentRunPage() {
                 toast.success('Google Test suite executed')
                 return
               }
-              results.push(withEntryLabel(submission, `Combined (${selectedInputFiles.length} files)`, entryTarget))
+              const caseKey = normalizeCaseKey(selectedInputFiles[0] || 'combined')
+              results.push(withEntryLabel(submission, `Combined (${selectedInputFiles.length} files)`, entryTarget, caseKey))
             }
             setBatchResults(results)
             const acCount = results.filter(r => r.verdict === 'AC').length
@@ -211,7 +239,7 @@ export default function StudentRunPage() {
                 toast.success('Google Test suite executed')
                 return
               }
-              results.push(withEntryLabel(submission, `${leftFile} + ${rightFile}`, entryTarget))
+              results.push(withEntryLabel(submission, `${leftFile} + ${rightFile}`, entryTarget, normalizeCaseKey(leftFile)))
             }
           }
 
@@ -228,7 +256,7 @@ export default function StudentRunPage() {
                 toast.success('Google Test suite executed')
                 return
               }
-              results.push(withEntryLabel(submission, inputFileName, entryTarget))
+              results.push(withEntryLabel(submission, inputFileName, entryTarget, normalizeCaseKey(inputFileName)))
             }
           }
           setBatchResults(results)
@@ -263,6 +291,7 @@ export default function StudentRunPage() {
 
   const sourceFiles = zipFiles.filter(f => f.isSourceFile)
   const inputFiles = zipFiles.filter(f => f.isInputFile)
+  const expectedFiles = zipFiles.filter(f => f.isExpectedFile && f.content)
   const mainSourceFiles = sourceFiles.filter(f => f.hasMain)
 
   return (
@@ -416,7 +445,7 @@ export default function StudentRunPage() {
                 <div className="mb-4 p-3 bg-navy-2 border border-white/10 rounded-lg text-xs space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-cyan font-semibold">📁 Project Files:</span>
-                    <span className="text-gray-400">{sourceFiles.length} source, {inputFiles.length} input</span>
+                    <span className="text-gray-400">{sourceFiles.length} source, {inputFiles.length} input, {expectedFiles.length} expected</span>
                   </div>
                   
                   {sourceFiles.length > 0 && (
@@ -436,6 +465,17 @@ export default function StudentRunPage() {
                       <div className="ml-2 space-y-1">
                         {inputFiles.map((f, i) => (
                           <p key={i} className="text-success">📋 {f.name}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {expectedFiles.length > 0 && (
+                    <div>
+                      <p className="text-gray-500">Expected Output Files:</p>
+                      <div className="ml-2 space-y-1">
+                        {expectedFiles.map((f, i) => (
+                          <p key={i} className="text-warning">✅ {f.name}</p>
                         ))}
                       </div>
                     </div>
@@ -585,7 +625,13 @@ export default function StudentRunPage() {
                           <span>Execution Time: {r.executionTime || 0} ms</span>
                           <span>Complexity: {r.aiFeedback?.complexity || 'N/A'}</span>
                         </div>
+                        {r.expectedFileName && (
+                          <p className="text-[11px] text-gray-400">Expected File: {r.expectedFileName}</p>
+                        )}
                         <pre className="bg-navy-2 rounded-lg p-2 text-xs text-green-300 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.output || '(no output)'}</pre>
+                        {r.expectedOutput && (
+                          <pre className="bg-navy-2 rounded-lg p-2 text-xs text-cyan font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">Expected: {r.expectedOutput}</pre>
+                        )}
                         {r.errorMessage && (
                           <pre className="bg-danger/10 border border-danger/30 rounded-lg p-2 text-xs text-danger font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">{r.errorMessage}</pre>
                         )}
