@@ -149,6 +149,7 @@ export default function AssignmentPage() {
                         <div>
                           <div className={`font-black text-lg ${vc?.color}`}>{result.verdict} — {vc?.label}</div>
                           <div className="text-gray-400 text-sm">Score: {result.score}/{result.totalScore} • {result.passedTests}/{result.totalTests} tests passed</div>
+                          {result.isGTest && <div className="text-xs mt-1 inline-flex px-2 py-0.5 rounded bg-cyan/10 text-cyan border border-cyan/30">Google Test mode</div>}
                         </div>
                       </div>
                       <button onClick={downloadPDF} className="btn-outline text-sm py-2 flex items-center gap-2">

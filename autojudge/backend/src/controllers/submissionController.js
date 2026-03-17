@@ -1,7 +1,7 @@
 const Submission = require('../models/Submission');
 const Assignment = require('../models/Assignment');
 const User = require('../models/User');
-const { runCode, runWithInput, runProjectFromZip } = require('../services/sandboxService');
+const { runCode, runWithInput, runProjectFromZip, runProjectAgainstTests } = require('../services/sandboxService');
 const { generateFeedback, detectPlagiarism } = require('../services/aiService');
 const { generateSubmissionReport } = require('../services/pdfService');
 const fs = require('fs');
@@ -11,16 +11,29 @@ exports.submit = async (req, res) => {
   try {
     const { code, language, assignmentId } = req.body;
     let finalCode = code;
+    let isZipUpload = false;
 
     // Handle file upload
     if (req.file) {
       const ext = req.file.originalname.split('.').pop().toLowerCase();
       if (ext === 'zip') {
+        isZipUpload = true;
         const zip = new AdmZip(req.file.path);
         const entries = zip.getEntries().filter(e => !e.isDirectory);
-        const codeEntry = entries.find(e => ['cpp','c','py','java','js'].includes(e.entryName.split('.').pop()));
-        if (codeEntry) finalCode = zip.readAsText(codeEntry);
-        else return res.status(400).json({ success: false, message: 'No valid code file in zip' });
+        const sourceExtByLang = {
+          cpp: ['cpp', 'cc', 'cxx', 'hpp', 'h'],
+          c: ['c', 'h'],
+          python: ['py'],
+          java: ['java'],
+          javascript: ['js']
+        };
+        const allowedExt = sourceExtByLang[language] || ['cpp', 'c', 'py', 'java', 'js'];
+        const codeEntries = entries.filter(e => allowedExt.includes((e.entryName.split('.').pop() || '').toLowerCase()));
+        if (codeEntries.length > 0) {
+          finalCode = codeEntries.slice(0, 15).map((e) => `// FILE: ${e.entryName}\n${zip.readAsText(e)}`).join('\n\n');
+        } else {
+          return res.status(400).json({ success: false, message: 'No valid code files in zip' });
+        }
       } else {
         finalCode = fs.readFileSync(req.file.path, 'utf-8');
       }
@@ -54,13 +67,30 @@ exports.submit = async (req, res) => {
     const io = req.app.get('io');
     io?.to(req.user._id.toString()).emit('submission-start', { submissionId: submission._id });
 
-    // Run tests
-    const testResults = testCases.length > 0 ? await runCode(finalCode, language, testCases) : [];
+    // Run tests (supports normal source files and zip project mode)
+    let isGTest = false;
+    let testResults = [];
+
+    if (testCases.length > 0) {
+      if (isZipUpload) {
+        const projectRun = await runProjectAgainstTests(req.file.path, language, testCases);
+        testResults = projectRun.testResults;
+        isGTest = !!projectRun.isGTest;
+      } else {
+        testResults = await runCode(finalCode, language, testCases);
+      }
+    }
+
     const passed = testResults.filter(r => r.verdict === 'AC').length;
-    const score = testCases.length > 0 ? Math.round((passed / testCases.length) * totalScore) : 0;
+    const totalEvaluated = isGTest ? testResults.length : testCases.length;
     const overallVerdict = testResults.length === 0 ? 'AC' :
       testResults.some(r => r.verdict === 'CE') ? 'CE' :
+      testResults.some(r => r.verdict === 'RE') ? 'RE' :
+      testResults.some(r => r.verdict === 'TLE') ? 'TLE' :
       testResults.every(r => r.verdict === 'AC') ? 'AC' : 'WA';
+    const score = testCases.length > 0
+      ? (isGTest ? (overallVerdict === 'AC' ? totalScore : 0) : Math.round((passed / Math.max(testCases.length, 1)) * totalScore))
+      : 0;
 
     // AI Feedback (async - don't block response)
     let aiFeedback = { summary: 'Processing...', bugs: [], improvements: [], modelUsed: 'pending' };
@@ -85,20 +115,21 @@ exports.submit = async (req, res) => {
       await User.findByIdAndUpdate(req.user._id, { $inc: { 'stats.totalSubmissions': 1, 'stats.solved': overallVerdict === 'AC' ? 1 : 0 } });
 
       io?.to(req.user._id.toString()).emit('submission-complete', {
-        submissionId: submission._id, verdict: overallVerdict, score, passed, total: testCases.length, feedback
+        submissionId: submission._id, verdict: overallVerdict, score, passed, total: totalEvaluated, isGTest, feedback
       });
     }).catch(err => console.error('AI feedback error:', err));
 
     // Update submission with results
     submission.testResults = testResults;
     submission.passedTests = passed;
+    submission.totalTests = totalEvaluated;
     submission.score = score;
     submission.verdict = overallVerdict;
     submission.status = 'completed';
     submission.executionTime = testResults.reduce((max, r) => Math.max(max, r.executionTime || 0), 0);
     await submission.save();
 
-    res.json({ success: true, submission: { _id: submission._id, verdict: overallVerdict, score, totalScore, passed, total: testCases.length, testResults, status: 'completed' } });
+    res.json({ success: true, submission: { _id: submission._id, verdict: overallVerdict, score, totalScore, passed, total: totalEvaluated, isGTest, testResults, status: 'completed' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

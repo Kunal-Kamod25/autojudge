@@ -294,3 +294,85 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
   }
 };
+
+exports.runProjectAgainstTests = async (zipPath, language, testCases = []) => {
+  if (!Array.isArray(testCases) || testCases.length === 0) {
+    const single = await exports.runProjectFromZip(zipPath, language, "");
+    return {
+      isGTest: !!single.isGTest,
+      testResults: [{
+        type: single.isGTest ? "gtest" : "custom",
+        input: "",
+        expectedOutput: "",
+        actualOutput: single.output || "",
+        verdict: single.verdict,
+        executionTime: single.executionTime || 0,
+        memoryUsed: 0,
+        points: 0,
+        errorMessage: single.errorMessage || ""
+      }]
+    };
+  }
+
+  const probe = await exports.runProjectFromZip(zipPath, language, testCases[0]?.input || "", testCases[0]?.timeLimit || 5000);
+
+  if (probe.isGTest) {
+    return {
+      isGTest: true,
+      testResults: [{
+        type: "gtest",
+        input: "",
+        expectedOutput: "",
+        actualOutput: probe.output || "",
+        verdict: probe.verdict,
+        executionTime: probe.executionTime || 0,
+        memoryUsed: 0,
+        points: probe.verdict === "AC" ? (testCases.reduce((sum, tc) => sum + (tc.points || 1), 0) || 1) : 0,
+        errorMessage: probe.errorMessage || ""
+      }]
+    };
+  }
+
+  if (probe.verdict === "CE") {
+    return {
+      isGTest: false,
+      testResults: testCases.map((tc) => ({
+        testCaseId: tc._id,
+        type: tc.type || "basic",
+        input: tc.input,
+        expectedOutput: (tc.expectedOutput || "").trim(),
+        actualOutput: "",
+        verdict: "CE",
+        executionTime: 0,
+        memoryUsed: 0,
+        points: 0,
+        errorMessage: probe.errorMessage || "Compilation failed"
+      }))
+    };
+  }
+
+  const testResults = [];
+  for (const tc of testCases) {
+    const runRes = await exports.runProjectFromZip(zipPath, language, tc.input || "", tc.timeLimit || 5000);
+    const expected = (tc.expectedOutput || "").trim();
+    const actual = (runRes.output || "").trim();
+
+    let verdict = runRes.verdict;
+    if (verdict === "AC") verdict = actual === expected ? "AC" : "WA";
+
+    testResults.push({
+      testCaseId: tc._id,
+      type: tc.type || "basic",
+      input: tc.input,
+      expectedOutput: expected,
+      actualOutput: actual,
+      verdict,
+      executionTime: runRes.executionTime || 0,
+      memoryUsed: 0,
+      points: verdict === "AC" ? (tc.points || 1) : 0,
+      errorMessage: runRes.errorMessage || ""
+    });
+  }
+
+  return { isGTest: false, testResults };
+};
