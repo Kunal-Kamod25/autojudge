@@ -22,6 +22,8 @@ const VERDICT_STYLE = {
   TLE: { text: 'text-warning', bg: 'bg-warning/10', icon: Clock, label: 'Time Limit Exceeded' }
 }
 
+const ENTRY_ALL_MAINS = '__ALL_MAINS__';
+
 const parseGTestStats = (output = '', errorMessage = '') => {
   const text = `${output}\n${errorMessage}`;
   const passedMatch = text.match(/\[\s*PASSED\s*\]\s+(\d+)/i);
@@ -112,7 +114,8 @@ export default function StudentRunPage() {
       const res = await submissionApi.extractZip(fd)
       setZipFiles(res.data.files)
       const mainCandidates = (res.data.files || []).filter((x) => x.isSourceFile && x.hasMain)
-      setEntryFile(mainCandidates[0]?.name || '')
+      if (mainCandidates.length > 1) setEntryFile(ENTRY_ALL_MAINS)
+      else setEntryFile(mainCandidates[0]?.name || '')
       toast.success(`ZIP loaded: ${res.data.files.length} files`)
     } catch (err) {
       toast.error('Failed to extract ZIP')
@@ -141,14 +144,15 @@ export default function StudentRunPage() {
     setBatchResults([])
 
     try {
-      const runOnce = async (runInput) => {
+      const runOnce = async (runInput, entryOverride = '') => {
         if (file) {
           const fd = new FormData()
           fd.append('file', file)
           fd.append('language', language)
           fd.append('input', runInput)
           fd.append('timeLimit', String(timeLimitSec * 1000))
-          if (entryFile) fd.append('entryFile', entryFile)
+          if (entryOverride) fd.append('entryFile', entryOverride)
+          else if (entryFile && entryFile !== ENTRY_ALL_MAINS) fd.append('entryFile', entryFile)
           const res = await submissionApi.runCustomFile(fd)
           return res.data.submission
         }
@@ -156,12 +160,41 @@ export default function StudentRunPage() {
         return res.data.submission
       }
 
+      const entryTargets = (file && mainSourceFiles.length > 1 && entryFile === ENTRY_ALL_MAINS)
+        ? mainSourceFiles.map((f) => f.name)
+        : [entryFile].filter(Boolean)
+
+      const withEntryLabel = (submission, inputLabel, entryTarget) => {
+        const shortEntry = entryTarget ? entryTarget.split('/').pop() : ''
+        return {
+          ...submission,
+          inputFileName: inputLabel,
+          entryFileName: shortEntry
+        }
+      }
+
       if (selectedInputFiles.length > 0) {
         if (inputExecutionMode === 'combine') {
           const combinedInputMarker = `@@${selectedInputFiles.join('||')}`
-          const submission = await runOnce(combinedInputMarker)
-          setResult({ ...submission, combinedFiles: [...selectedInputFiles] })
-          toast.success(`Ran combined input from ${selectedInputFiles.length} file(s)`)
+          if (entryTargets.length > 1) {
+            const results = []
+            for (const entryTarget of entryTargets) {
+              const submission = await runOnce(combinedInputMarker, entryTarget)
+              if (submission.isGTest) {
+                setResult(submission)
+                toast.success('Google Test suite executed')
+                return
+              }
+              results.push(withEntryLabel(submission, `Combined (${selectedInputFiles.length} files)`, entryTarget))
+            }
+            setBatchResults(results)
+            const acCount = results.filter(r => r.verdict === 'AC').length
+            toast.success(`Ran ${results.length} runs across all main files. Passed: ${acCount}`)
+          } else {
+            const submission = await runOnce(combinedInputMarker)
+            setResult({ ...submission, combinedFiles: [...selectedInputFiles] })
+            toast.success(`Ran combined input from ${selectedInputFiles.length} file(s)`)
+          }
         } else if (inputExecutionMode === 'pair') {
           if (selectedInputFiles.length < 2 || selectedInputFiles.length % 2 !== 0) {
             toast.error('Ax=b pair mode needs an even number of input files (L + R for each case)')
@@ -170,39 +203,54 @@ export default function StudentRunPage() {
 
           const pairs = buildAxBPairs(selectedInputFiles)
           const results = []
-          for (const [leftFile, rightFile] of pairs) {
-            const submission = await runOnce(`@@${leftFile}||${rightFile}`)
-            if (submission.isGTest) {
-              setResult(submission)
-              toast.success('Google Test suite executed')
-              return
+          for (const entryTarget of (entryTargets.length > 0 ? entryTargets : [''])) {
+            for (const [leftFile, rightFile] of pairs) {
+              const submission = await runOnce(`@@${leftFile}||${rightFile}`, entryTarget)
+              if (submission.isGTest) {
+                setResult(submission)
+                toast.success('Google Test suite executed')
+                return
+              }
+              results.push(withEntryLabel(submission, `${leftFile} + ${rightFile}`, entryTarget))
             }
-            results.push({ ...submission, inputFileName: `${leftFile} + ${rightFile}` })
           }
 
           setBatchResults(results)
           const acCount = results.filter(r => r.verdict === 'AC').length
-          toast.success(`Ran ${results.length} Ax=b test case(s). Passed: ${acCount}`)
+          toast.success(`Ran ${results.length} Ax=b test case run(s). Passed: ${acCount}`)
         } else {
           const results = []
-          for (const inputFileName of selectedInputFiles) {
-            const submission = await runOnce(`@${inputFileName}`)
-            if (submission.isGTest) {
-              setResult(submission)
-              toast.success('Google Test suite executed')
-              return
+          for (const entryTarget of (entryTargets.length > 0 ? entryTargets : [''])) {
+            for (const inputFileName of selectedInputFiles) {
+              const submission = await runOnce(`@${inputFileName}`, entryTarget)
+              if (submission.isGTest) {
+                setResult(submission)
+                toast.success('Google Test suite executed')
+                return
+              }
+              results.push(withEntryLabel(submission, inputFileName, entryTarget))
             }
-            results.push({ ...submission, inputFileName })
           }
           setBatchResults(results)
           const acCount = results.filter(r => r.verdict === 'AC').length
           toast.success(`Ran ${results.length} test case(s). Passed: ${acCount}`)
         }
       } else {
-        const submission = await runOnce(input)
-        setResult(submission)
-        if (submission.verdict === 'AC') toast.success('Program ran successfully')
-        else toast.error(submission.verdict)
+        if (entryTargets.length > 1) {
+          const results = []
+          for (const entryTarget of entryTargets) {
+            const submission = await runOnce(input, entryTarget)
+            results.push(withEntryLabel(submission, 'Manual Input', entryTarget))
+          }
+          setBatchResults(results)
+          const acCount = results.filter(r => r.verdict === 'AC').length
+          toast.success(`Ran ${results.length} main file(s). Passed: ${acCount}`)
+        } else {
+          const submission = await runOnce(input)
+          setResult(submission)
+          if (submission.verdict === 'AC') toast.success('Program ran successfully')
+          else toast.error(submission.verdict)
+        }
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Run failed')
@@ -272,11 +320,12 @@ export default function StudentRunPage() {
                   onChange={(e) => setEntryFile(e.target.value)}
                   className="bg-navy-light border border-white/20 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan"
                 >
+                  <option value={ENTRY_ALL_MAINS}>Run all main files</option>
                   {mainSourceFiles.map((f, i) => (
                     <option key={i} value={f.name}>{f.name}</option>
                   ))}
                 </select>
-                <span className="text-gray-500">Choose which main file to run.</span>
+                <span className="text-gray-500">Choose one main file or run all.</span>
               </div>
             )}
 
@@ -527,7 +576,9 @@ export default function StudentRunPage() {
                     return (
                       <div key={i} className="border border-white/10 rounded-lg p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs text-cyan font-semibold">Test Case {i + 1}: {r.inputFileName}</p>
+                          <p className="text-xs text-cyan font-semibold">
+                            Test Case {i + 1}: {r.entryFileName ? `${r.entryFileName} :: ` : ''}{r.inputFileName}
+                          </p>
                           <span className={`text-xs font-semibold ${vv.text}`}>{r.verdict}</span>
                         </div>
                         <div className="text-[11px] text-gray-400 flex items-center justify-between">
