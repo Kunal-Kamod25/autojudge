@@ -28,7 +28,7 @@ export default function StudentRunPage() {
   const [input, setInput] = useState('2 3\n1 2 3\n4 5 6')
   const [selectedInputFiles, setSelectedInputFiles] = useState([])
   const [inputExecutionMode, setInputExecutionMode] = useState('separate')
-  const [timeLimitSec, setTimeLimitSec] = useState(60)
+  const [timeLimitSec, setTimeLimitSec] = useState(180)
   const [file, setFile] = useState(null)
   const [zipFiles, setZipFiles] = useState([])
   const [selectedFilePreview, setSelectedFilePreview] = useState(null)
@@ -173,10 +173,11 @@ export default function StudentRunPage() {
                 onChange={(e) => setTimeLimitSec(Number(e.target.value))}
                 className="bg-navy-light border border-white/20 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan"
               >
-                <option value={30}>30s</option>
                 <option value={60}>60s</option>
                 <option value={120}>120s</option>
                 <option value={180}>180s</option>
+                <option value={300}>300s</option>
+                <option value={600}>600s</option>
               </select>
               <span className="text-gray-500">Large matrices may need higher limit.</span>
             </div>
@@ -346,9 +347,18 @@ export default function StudentRunPage() {
                             checked={selectedInputFiles.includes(f.name)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedInputFiles(prev => [...prev, f.name])
+                                setSelectedInputFiles(prev => {
+                                  const next = [...prev, f.name]
+                                  if (next.length === 2) setInputExecutionMode('combine')
+                                  if (next.length > 2 && inputExecutionMode === 'combine') setInputExecutionMode('separate')
+                                  return next
+                                })
                               } else {
-                                setSelectedInputFiles(prev => prev.filter(name => name !== f.name))
+                                setSelectedInputFiles(prev => {
+                                  const next = prev.filter(name => name !== f.name)
+                                  if (next.length < 2 && inputExecutionMode !== 'separate') setInputExecutionMode('separate')
+                                  return next
+                                })
                               }
                             }}
                           />

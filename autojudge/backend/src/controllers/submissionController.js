@@ -140,8 +140,8 @@ exports.runCustom = async (req, res) => {
     const { code, language, input = '', timeLimit } = req.body;
     const parsedLimit = Number(timeLimit);
     const customTimeLimit = Number.isFinite(parsedLimit)
-      ? Math.min(Math.max(parsedLimit, 2000), 180000)
-      : 60000;
+      ? Math.min(Math.max(parsedLimit, 2000), 600000)
+      : 120000;
     let finalCode = code;
     let runResult = null;
 

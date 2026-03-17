@@ -58,7 +58,7 @@ const computeAdaptiveTimeLimit = (rawInput, baseMs = 5000) => {
     else if (maybeN >= 250) boosted = Math.max(boosted, 30000);
   }
 
-  return Math.min(boosted, 180000);
+  return Math.min(boosted, 600000);
 };
 
 const detectGTestProject = (files) => {
@@ -328,7 +328,17 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     }
 
     if (compileCmd) {
-      const compileRes = await execPromise(compileCmd, 20000, { cwd: tmpDir });
+      const compileTimeoutMs = Math.min(600000, Math.max(90000, 30000 + (sourceFiles.length * 5000)));
+      const compileRes = await execPromise(compileCmd, compileTimeoutMs, { cwd: tmpDir });
+      if (compileRes.timedOut) {
+        return {
+          verdict: "CE",
+          output: "",
+          executionTime: 0,
+          errorMessage: `Compilation time limit exceeded (${Math.round(compileTimeoutMs / 1000)}s). Try 120s/180s/300s/600s run limit or reduce project size.`,
+          isGTest
+        };
+      }
       if (compileRes.exitCode !== 0) {
         return {
           verdict: "CE",
