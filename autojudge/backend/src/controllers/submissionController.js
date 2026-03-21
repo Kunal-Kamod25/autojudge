@@ -7,6 +7,12 @@ const { generateSubmissionReport } = require('../services/pdfService');
 const fs = require('fs');
 const AdmZip = require('adm-zip');
 
+const cleanupUploadedFile = (file) => {
+  if (file?.path) {
+    fs.unlink(file.path, () => {});
+  }
+};
+
 exports.submit = async (req, res) => {
   try {
     const { code, language, assignmentId } = req.body;
@@ -20,6 +26,9 @@ exports.submit = async (req, res) => {
         isZipUpload = true;
         const zip = new AdmZip(req.file.path);
         const entries = zip.getEntries().filter(e => !e.isDirectory);
+        if (entries.length > 2000) {
+          return res.status(400).json({ success: false, message: 'ZIP contains too many files' });
+        }
         const sourceExtByLang = {
           cpp: ['cpp', 'cc', 'cxx', 'hpp', 'h'],
           c: ['c', 'h'],
@@ -30,7 +39,11 @@ exports.submit = async (req, res) => {
         const allowedExt = sourceExtByLang[language] || ['cpp', 'c', 'py', 'java', 'js'];
         const codeEntries = entries.filter(e => allowedExt.includes((e.entryName.split('.').pop() || '').toLowerCase()));
         if (codeEntries.length > 0) {
-          finalCode = codeEntries.slice(0, 15).map((e) => `// FILE: ${e.entryName}\n${zip.readAsText(e)}`).join('\n\n');
+          finalCode = codeEntries.slice(0, 15).map((e) => {
+            const size = e.header?.size || 0;
+            const safeContent = size > 1024 * 1024 ? '[File too large to preview]' : zip.readAsText(e);
+            return `// FILE: ${e.entryName}\n${safeContent}`;
+          }).join('\n\n');
         } else {
           return res.status(400).json({ success: false, message: 'No valid code files in zip' });
         }
@@ -132,6 +145,8 @@ exports.submit = async (req, res) => {
     res.json({ success: true, submission: { _id: submission._id, verdict: overallVerdict, score, totalScore, passed, total: totalEvaluated, isGTest, testResults, status: 'completed' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  } finally {
+    cleanupUploadedFile(req.file);
   }
 };
 
@@ -228,6 +243,8 @@ exports.runCustom = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  } finally {
+    cleanupUploadedFile(req.file);
   }
 };
 
@@ -242,6 +259,9 @@ exports.extractZip = async (req, res) => {
 
     const zip = new AdmZip(req.file.path);
     const entries = zip.getEntries();
+    if (entries.length > 2000) {
+      return res.status(400).json({ success: false, message: 'ZIP contains too many files' });
+    }
 
     const files = [];
     const sourceExtByLang = {
@@ -276,7 +296,7 @@ exports.extractZip = async (req, res) => {
         let hasMain = false;
         try {
           if (isSourceFile || isInputFile || isExpectedFile) {
-            content = zip.readAsText(entry);
+            content = entry.header?.size > 1024 * 1024 ? '[File too large to preview]' : zip.readAsText(entry);
             if (isSourceFile) {
               if (language === 'cpp' || language === 'c') {
                 hasMain = /\bint\s+main\s*\(/.test(content);
@@ -304,6 +324,8 @@ exports.extractZip = async (req, res) => {
     res.json({ success: true, files });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  } finally {
+    cleanupUploadedFile(req.file);
   }
 };
 
