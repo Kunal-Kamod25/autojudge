@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const User = require('./models/User');
@@ -15,25 +15,28 @@ const seedData = async () => {
     await Assignment.deleteMany({});
     console.log('Cleared existing data.');
 
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(18).toString('base64url');
+    const teacherPassword = process.env.SEED_TEACHER_PASSWORD || crypto.randomBytes(18).toString('base64url');
+
     // Create Admin User
     const admin = await User.create({
       name: 'Admin User',
       email: 'admin@autojudge.com',
-      password: 'adminpassword123', // Will be hashed by pre-save hook
+      password: adminPassword,
       role: 'admin',
       isVerified: true
     });
-    console.log('Admin user created: admin@autojudge.com / adminpassword123');
+    console.log(`Admin user created: admin@autojudge.com / ${adminPassword}`);
 
     // Create Teacher User
     const teacher = await User.create({
       name: 'Teacher One',
       email: 'teacher@autojudge.com',
-      password: 'teacherpassword123',
+      password: teacherPassword,
       role: 'teacher',
       isVerified: true
     });
-    console.log('Teacher user created: teacher@autojudge.com / teacherpassword123');
+    console.log(`Teacher user created: teacher@autojudge.com / ${teacherPassword}`);
 
     // Create Sample Assignment
     const assignment = await Assignment.create({
