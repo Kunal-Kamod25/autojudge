@@ -1,9 +1,10 @@
 const User = require('../models/User');
 const crypto = require('crypto');
-const { generateTokens, verifyToken, setTokenCookies } = require('../utils/jwt');
+const { generateTokens, verifyToken, setTokenCookies, JWT_SECRET, JWT_REFRESH_SECRET } = require('../utils/jwt');
 const { sendOTPEmail } = require('../services/emailService');
 
 const generateOTP = () => crypto.randomInt(100000, 999999).toString();
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 exports.register = async (req, res) => {
   try {
@@ -14,7 +15,7 @@ exports.register = async (req, res) => {
     user.refreshTokens.push({ token: refreshToken });
     await user.save();
     setTokenCookies(res, accessToken, refreshToken);
-    res.status(201).json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar }, accessToken });
+    res.status(201).json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
@@ -30,15 +31,15 @@ exports.login = async (req, res) => {
     user.refreshTokens.push({ token: refreshToken });
     await user.save();
     setTokenCookies(res, accessToken, refreshToken);
-    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, stats: user.stats }, accessToken });
+    res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, stats: user.stats } });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
 exports.refreshToken = async (req, res) => {
   try {
-    const token = req.cookies?.refreshToken || req.body.refreshToken;
+    const token = req.cookies?.refreshToken;
     if (!token) return res.status(401).json({ success: false, message: 'No refresh token' });
-    const decoded = verifyToken(token, process.env.JWT_REFRESH_SECRET || 'refresh_secret');
+    const decoded = verifyToken(token, JWT_REFRESH_SECRET);
     const user = await User.findById(decoded.id);
     if (!user || !user.refreshTokens.some(t => t.token === token)) return res.status(401).json({ success: false, message: 'Invalid refresh token' });
     const { accessToken, refreshToken: newRefresh } = generateTokens(user._id);
@@ -46,7 +47,7 @@ exports.refreshToken = async (req, res) => {
     user.refreshTokens.push({ token: newRefresh });
     await user.save();
     setTokenCookies(res, accessToken, newRefresh);
-    res.json({ success: true, accessToken });
+    res.json({ success: true });
   } catch (err) { res.status(401).json({ success: false, message: 'Invalid token' }); }
 };
 
@@ -57,8 +58,9 @@ exports.logout = async (req, res) => {
       req.user.refreshTokens = req.user.refreshTokens.filter(t => t.token !== token);
       await req.user.save();
     }
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    const cookieConfig = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' };
+    res.clearCookie('accessToken', cookieConfig);
+    res.clearCookie('refreshToken', cookieConfig);
     res.json({ success: true, message: 'Logged out' });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
@@ -72,7 +74,7 @@ exports.oauthSuccess = async (req, res) => {
   req.user.refreshTokens.push({ token: refreshToken });
   await req.user.save();
   setTokenCookies(res, accessToken, refreshToken);
-  res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${accessToken}`);
+  res.redirect(`${frontendUrl}/auth/callback`);
 };
 
 // ─── Forgot Password Flow ─────────────────────────────
@@ -112,8 +114,8 @@ exports.verifyOTP = async (req, res) => {
     // Generate a short-lived reset token
     const resetToken = require('jsonwebtoken').sign(
       { id: user._id, purpose: 'password-reset' },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '15m' }
+      JWT_SECRET,
+      { expiresIn: '15m', algorithm: 'HS256' }
     );
     user.otp = undefined;
     user.otpExpires = undefined;
@@ -127,7 +129,7 @@ exports.resetPassword = async (req, res) => {
     const { resetToken, newPassword } = req.body;
     if (!resetToken || !newPassword) return res.status(400).json({ success: false, message: 'Token and password required' });
     if (newPassword.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-    const decoded = require('jsonwebtoken').verify(resetToken, process.env.JWT_SECRET || 'secret');
+    const decoded = require('jsonwebtoken').verify(resetToken, JWT_SECRET, { algorithms: ['HS256'] });
     if (decoded.purpose !== 'password-reset') return res.status(400).json({ success: false, message: 'Invalid reset token' });
     const user = await User.findById(decoded.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
