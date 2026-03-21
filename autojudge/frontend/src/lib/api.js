@@ -7,18 +7,6 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
-// Auto-attach token
-api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    try {
-      const state = JSON.parse(localStorage.getItem('auth-store') || '{}');
-      const token = state?.state?.accessToken;
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    } catch(e) {}
-  }
-  return config;
-});
-
 // Auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
@@ -27,10 +15,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !orig._retry) {
       orig._retry = true;
       try {
-        const { data } = await api.post('/api/auth/refresh');
-        const { useAuthStore } = await import('./store');
-        useAuthStore.getState().setToken(data.accessToken);
-        orig.headers.Authorization = `Bearer ${data.accessToken}`;
+        await api.post('/api/auth/refresh');
         return api(orig);
       } catch(e) {
         const { useAuthStore } = await import('./store');
