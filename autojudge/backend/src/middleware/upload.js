@@ -12,10 +12,26 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowed = ['.cpp', '.c', '.py', '.java', '.js', '.zip', '.tar', '.gz', '.txt'];
+  const allowed = ['.cpp', '.c', '.py', '.java', '.js', '.zip', '.txt'];
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) cb(null, true);
-  else cb(new Error('Invalid file type'), false);
+  const allowedMimes = new Set([
+    'text/plain',
+    'text/x-c',
+    'text/x-c++src',
+    'text/x-java-source',
+    'application/javascript',
+    'text/javascript',
+    'application/zip',
+    'application/x-zip-compressed'
+  ]);
+
+  if (!allowed.includes(ext)) return cb(new Error('Invalid file type'), false);
+
+  if (ext === '.zip' || !file.mimetype || allowedMimes.has(file.mimetype)) {
+    return cb(null, true);
+  }
+
+  return cb(new Error('Invalid file MIME type'), false);
 };
 
 const upload = multer({
