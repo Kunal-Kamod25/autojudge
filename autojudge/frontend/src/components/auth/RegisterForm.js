@@ -1,5 +1,5 @@
 "use client"
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -59,7 +59,7 @@ const testimonial = {
   avatar: 'PS',
 }
 
-export default function RegisterPage() {
+function RegisterPageContent() {
   const params = useSearchParams()
   const [form, setForm] = useState({ name: '', email: '', password: '', role: params.get('role') || 'student' })
   const [showPwd, setShowPwd] = useState(false)
@@ -77,7 +77,7 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       const { data } = await authApi.register(form)
-      login(data.user, data.accessToken)
+      login(data.user)
       toast.success('Account created! Welcome to AutoJudge 🎉')
       router.push('/auth/login')
     } catch (err) {
@@ -350,5 +350,13 @@ export default function RegisterPage() {
         </motion.div>
       </div>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen auth-split-bg" />}>
+      <RegisterPageContent />
+    </Suspense>
   )
 }
