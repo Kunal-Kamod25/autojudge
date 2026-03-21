@@ -36,8 +36,51 @@ const walkFiles = (root) => {
 };
 
 const toShellPath = (p) => p.replace(/\\/g, "/");
-const q = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
+const q = (value) => `"${String(value)
+  .replace(/[\r\n]/g, "")
+  .replace(/(["\\$`])/g, "\\$1")}"`;
 const sanitizeInput = (value) => String(value || "").replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
+
+const resolveSafeZipPath = (rootDir, entryName) => {
+  const normalized = String(entryName || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized || normalized.includes("\0")) return null;
+  const targetPath = path.resolve(rootDir, normalized);
+  const basePath = path.resolve(rootDir);
+  if (targetPath !== basePath && !targetPath.startsWith(basePath + path.sep)) return null;
+  return targetPath;
+};
+
+const extractZipSafely = (zipPath, destinationDir, options = {}) => {
+  const maxEntries = options.maxEntries || 5000;
+  const maxTotalSize = options.maxTotalSize || 50 * 1024 * 1024;
+
+  const zip = new AdmZip(zipPath);
+  const entries = zip.getEntries();
+  if (entries.length > maxEntries) {
+    throw new Error("Archive contains too many files");
+  }
+
+  let totalExtractedBytes = 0;
+  for (const entry of entries) {
+    const targetPath = resolveSafeZipPath(destinationDir, entry.entryName);
+    if (!targetPath) {
+      throw new Error("Archive contains unsafe file path");
+    }
+
+    if (entry.isDirectory) {
+      fs.mkdirSync(targetPath, { recursive: true });
+      continue;
+    }
+
+    totalExtractedBytes += entry.header.size || 0;
+    if (totalExtractedBytes > maxTotalSize) {
+      throw new Error("Archive is too large to extract safely");
+    }
+
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, entry.getData());
+  }
+};
 
 const computeAdaptiveTimeLimit = (rawInput, baseMs = 5000) => {
   const safeBase = Number.isFinite(baseMs) ? Math.max(2000, baseMs) : 5000;
@@ -214,7 +257,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
 
   try {
     const zip = new AdmZip(zipPath);
-    zip.extractAllTo(tmpDir, true);
+    extractZipSafely(zipPath, tmpDir);
 
     const allFiles = walkFiles(tmpDir);
     const extMap = {
