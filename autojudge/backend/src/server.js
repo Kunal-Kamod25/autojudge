@@ -29,8 +29,25 @@ require('./config/passport');
 const app = express();
 const server = http.createServer(app);
 
+if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET || !process.env.SESSION_SECRET) {
+  throw new Error('Missing required auth secrets: JWT_SECRET, JWT_REFRESH_SECRET, and SESSION_SECRET must be set.');
+}
+
+const parseAllowedOrigins = () => {
+  const urls = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '').split(',').map((u) => u.trim()).filter(Boolean);
+  if (process.env.NODE_ENV !== 'production') {
+    urls.push('http://localhost:3000', 'http://localhost:3001');
+  }
+  return Array.from(new Set(urls));
+};
+
+const allowedOrigins = parseAllowedOrigins();
+
 const io = new Server(server, {
-  cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }
+  cors: {
+    origin: allowedOrigins,
+    credentials: true
+  }
 });
 app.set('io', io);
 
@@ -41,15 +58,12 @@ io.on('connection', (socket) => {
 
 connectDB();
 
-// CORS configuration with better origin handling
-const corsOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowed = [corsOrigin, 'http://localhost:3000', 'http://localhost:3001'];
-    if (!origin || allowed.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all in production for debugging
+      callback(new Error('Origin not allowed by CORS'));
     }
   },
   credentials: true,
@@ -57,16 +71,41 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 };
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.disable('x-powered-by');
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+
+app.use(helmet());
 app.use(compression());
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-const limiter = rateLimit({ windowMs: 15*60*1000, max: 200 });
-const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 15 });
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again later.' }
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many authentication attempts. Please try again later.' }
+});
+const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many OTP attempts. Please try again later.' }
+});
 app.use('/api/', limiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', otpLimiter);
+app.use('/api/auth/verify-otp', otpLimiter);
+app.use('/api/auth/reset-password', otpLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -74,9 +113,15 @@ app.use(cookieParser());
 app.use(morgan('combined', { stream: { write: m => logger.info(m.trim()) } }));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'secret',
+  name: 'aj.sid',
+  secret: process.env.SESSION_SECRET,
   resave: false, saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 24*60*60*1000 }
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000
+  }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -112,7 +157,8 @@ app.get('/api/stats', async (req, res) => {
 
 app.use((err, req, res, next) => {
   logger.error(err.stack);
-  res.status(err.status || 500).json({ success: false, message: err.message || 'Server Error' });
+  const safeMessage = process.env.NODE_ENV === 'production' ? 'Server Error' : (err.message || 'Server Error');
+  res.status(err.status || 500).json({ success: false, message: safeMessage });
 });
 
 const PORT = process.env.PORT || 5000;
