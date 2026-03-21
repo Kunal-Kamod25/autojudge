@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -25,7 +25,7 @@ const codeLines = [
   { text: '    return dist', color: '#00B4D8' },
 ]
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -72,7 +72,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const { data } = await authApi.login(form)
-      login(data.user, data.accessToken)
+      login(data.user)
       toast.success(`Welcome back, ${data.user.name}! 🎉`)
       router.push(data.user.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard')
     } catch (err) {
@@ -470,5 +470,13 @@ export default function LoginPage() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen auth-split-bg" />}>
+      <LoginPageContent />
+    </Suspense>
   )
 }
