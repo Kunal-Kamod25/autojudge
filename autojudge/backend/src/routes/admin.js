@@ -7,6 +7,8 @@ const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect, authorize('admin'));
 
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 router.get('/stats', async (req, res) => {
   try {
     const [users, submissions, assignments, practices] = await Promise.all([
@@ -25,12 +27,17 @@ router.get('/stats', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const { page = 1, limit = 20, role, search } = req.query;
+    const safePage = Math.max(parseInt(page, 10) || 1, 1);
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     const query = {};
     if (role) query.role = role;
-    if (search) query.$or = [{ name: new RegExp(search, 'i') }, { email: new RegExp(search, 'i') }];
+    if (search) {
+      const normalized = escapeRegExp(String(search).slice(0, 100));
+      query.$or = [{ name: new RegExp(normalized, 'i') }, { email: new RegExp(normalized, 'i') }];
+    }
     const total = await User.countDocuments(query);
-    const users = await User.find(query).sort('-createdAt').limit(+limit).skip((+page-1)*+limit).select('-refreshTokens -password');
-    res.json({ success: true, users, total, pages: Math.ceil(total / +limit) });
+    const users = await User.find(query).sort('-createdAt').limit(safeLimit).skip((safePage - 1) * safeLimit).select('-refreshTokens -password');
+    res.json({ success: true, users, total, pages: Math.ceil(total / safeLimit) });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
