@@ -1,3 +1,4 @@
+// This file drives the upload feature flow and keeps the behavior easy to reason about.
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -11,6 +12,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname)}`)
 });
 
+// fileFilter handles one focused part of this file's workflow.
 const fileFilter = (req, file, cb) => {
   const allowed = ['.cpp', '.c', '.py', '.java', '.js', '.zip', '.txt'];
   const ext = path.extname(file.originalname).toLowerCase();
@@ -25,8 +27,10 @@ const fileFilter = (req, file, cb) => {
     'application/x-zip-compressed'
   ]);
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!allowed.includes(ext)) return cb(new Error('Invalid file type'), false);
 
+  // Guard branch for invalid state or input.
   if (ext === '.zip' || !file.mimetype || allowedMimes.has(file.mimetype)) {
     return cb(null, true);
   }

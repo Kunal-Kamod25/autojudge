@@ -1,3 +1,4 @@
+// This file drives the seed feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 require('dotenv').config();
@@ -5,7 +6,9 @@ require('dotenv').config();
 const User = require('./models/User');
 const Assignment = require('./models/Assignment');
 
+// seedData handles one focused part of this file's workflow.
 const seedData = async () => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/autojudge');
     console.log('Connected to MongoDB for seeding...');

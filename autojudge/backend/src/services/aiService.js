@@ -1,23 +1,29 @@
+// This file drives the aiService feature flow and keeps the behavior easy to reason about.
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 let groqClient = null;
+// Wrap this block to return a clean API/UI error path if anything fails.
 try {
   const Groq = require("groq-sdk");
   if (process.env.GROQ_API_KEY) groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
 } catch(e) {}
 
 let anthropicClient = null;
+// Wrap this block to return a clean API/UI error path if anything fails.
 try {
   const Anthropic = require("@anthropic-ai/sdk");
   if (process.env.ANTHROPIC_API_KEY) anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 } catch(e) {}
 
+// getGemini handles one focused part of this file's workflow.
 const getGemini = () => {
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!process.env.GEMINI_API_KEY) return null;
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 };
 
+// askGroq handles one focused part of this file's workflow.
 const askGroq = async (prompt) => {
   if (!groqClient) throw new Error("Groq not configured");
   const res = await groqClient.chat.completions.create({
@@ -28,6 +34,7 @@ const askGroq = async (prompt) => {
   return res.choices[0].message.content;
 };
 
+// askClaude handles one focused part of this file's workflow.
 const askClaude = async (prompt) => {
   if (!anthropicClient) throw new Error("Claude not configured");
   const res = await anthropicClient.messages.create({
@@ -38,6 +45,7 @@ const askClaude = async (prompt) => {
   return res.content[0].text;
 };
 
+// askGemini handles one focused part of this file's workflow.
 const askGemini = async (prompt) => {
   const model = getGemini();
   if (!model) throw new Error("Gemini not configured");
@@ -45,6 +53,7 @@ const askGemini = async (prompt) => {
   return res.response.text();
 };
 
+// askHuggingFace handles one focused part of this file's workflow.
 const askHuggingFace = async (prompt) => {
   const res = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
     method: "POST",
@@ -55,6 +64,7 @@ const askHuggingFace = async (prompt) => {
   return Array.isArray(data) ? data[0].generated_text : data.generated_text || "";
 };
 
+// askAI handles one focused part of this file's workflow.
 const askAI = async (prompt) => {
   // Try in order: Groq (fastest) → Claude → Gemini → HuggingFace → Fallback
   const attempts = [];
@@ -96,6 +106,7 @@ Provide a structured analysis in JSON format:
 Only respond with valid JSON.`;
 
   const { text, model } = await askAI(prompt);
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
@@ -119,6 +130,7 @@ Respond ONLY with JSON array:
 ]`;
 
   const { text } = await askAI(prompt);
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const arr = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] || "[]");
     return arr.slice(0, count);
@@ -127,6 +139,7 @@ Respond ONLY with JSON array:
 
 exports.detectPlagiarism = async (code1, code2, language) => {
   // Simple token-based similarity
+  // tokenize handles one focused part of this file's workflow.
   const tokenize = (c) => c.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2);
   const t1 = new Set(tokenize(code1)), t2 = new Set(tokenize(code2));
   const intersection = [...t1].filter(t => t2.has(t)).length;

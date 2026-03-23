@@ -1,3 +1,4 @@
+// This file drives the Practice feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 
 const practiceSchema = new mongoose.Schema({

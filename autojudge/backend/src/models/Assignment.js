@@ -1,3 +1,4 @@
+// This file drives the Assignment feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 
 const testCaseSchema = new mongoose.Schema({

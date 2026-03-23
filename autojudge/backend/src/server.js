@@ -1,3 +1,4 @@
+// This file drives the server feature flow and keeps the behavior easy to reason about.
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -33,7 +34,17 @@ if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET || !process.env.S
   throw new Error('Missing required auth secrets: JWT_SECRET, JWT_REFRESH_SECRET, and SESSION_SECRET must be set.');
 }
 
+// getCookiePolicy handles one focused part of this file's workflow.
+const getCookiePolicy = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const sameSite = (process.env.COOKIE_SAME_SITE || (isProduction ? 'none' : 'lax')).toLowerCase();
+  const secure = sameSite === 'none' ? true : isProduction;
+  return { sameSite, secure };
+};
+
+// parseAllowedOrigins handles one focused part of this file's workflow.
 const parseAllowedOrigins = () => {
+  // urls handles one focused part of this file's workflow.
   const urls = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '').split(',').map((u) => u.trim()).filter(Boolean);
   if (process.env.NODE_ENV !== 'production') {
     urls.push('http://localhost:3000', 'http://localhost:3001');
@@ -117,9 +128,9 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false, saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: getCookiePolicy().secure,
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: getCookiePolicy().sameSite,
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
@@ -141,6 +152,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Dat
 
 // Public platform stats (no auth required)
 app.get('/api/stats', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const User = require('./models/User');
     const Submission = require('./models/Submission');

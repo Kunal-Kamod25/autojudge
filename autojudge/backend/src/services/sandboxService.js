@@ -1,3 +1,4 @@
+// This file drives the sandboxService feature flow and keeps the behavior easy to reason about.
 const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -20,6 +21,7 @@ const execPromise = (cmd, timeoutMs = 10000, options = {}) => new Promise((resol
   });
 });
 
+// walkFiles handles one focused part of this file's workflow.
 const walkFiles = (root) => {
   const out = [];
   const stack = [root];
@@ -35,17 +37,23 @@ const walkFiles = (root) => {
   return out;
 };
 
+// toShellPath handles one focused part of this file's workflow.
 const toShellPath = (p) => p.replace(/\\/g, "/");
+// q handles one focused part of this file's workflow.
 const q = (value) => `"${String(value)
   .replace(/[\r\n]/g, "")
   .replace(/(["\\$`])/g, "\\$1")}"`;
+// sanitizeInput handles one focused part of this file's workflow.
 const sanitizeInput = (value) => String(value || "").replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$");
 
+// resolveSafeZipPath handles one focused part of this file's workflow.
 const resolveSafeZipPath = (rootDir, entryName) => {
   const normalized = String(entryName || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!normalized || normalized.includes("\0")) return null;
   const targetPath = path.resolve(rootDir, normalized);
   const basePath = path.resolve(rootDir);
+  // Quick guard clause so we fail fast before doing heavier work.
   if (targetPath !== basePath && !targetPath.startsWith(basePath + path.sep)) return null;
   return targetPath;
 };
@@ -85,6 +93,7 @@ const extractZipSafely = (zipPath, destinationDir, options = {}) => {
 const computeAdaptiveTimeLimit = (rawInput, baseMs = 5000) => {
   const safeBase = Number.isFinite(baseMs) ? Math.max(2000, baseMs) : 5000;
   const inputText = String(rawInput || "").trim();
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!inputText) return safeBase;
 
   const tokenCount = inputText.split(/\s+/).length;
@@ -104,13 +113,16 @@ const computeAdaptiveTimeLimit = (rawInput, baseMs = 5000) => {
   return Math.min(boosted, 600000);
 };
 
+// detectGTestProject handles one focused part of this file's workflow.
 const detectGTestProject = (files) => {
   const patterns = [/gtest\/gtest\.h/, /\bTEST(_F|_P)?\s*\(/, /\bRUN_ALL_TESTS\s*\(/];
   for (const file of files) {
     const ext = path.extname(file).toLowerCase();
     if (![".cpp", ".cc", ".cxx", ".hpp", ".h"].includes(ext)) continue;
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const content = fs.readFileSync(file, "utf-8");
+      // Quick guard clause so we fail fast before doing heavier work.
       if (patterns.some((re) => re.test(content))) return true;
     } catch (e) {
       // Ignore unreadable files while scanning
@@ -205,10 +217,12 @@ exports.runWithInput = async (code, language, input = "", timeLimit = 5000) => {
   const srcFile = `${filePath}.${lang.ext}`;
   fs.writeFileSync(srcFile, code);
 
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     if (lang.compiled) {
       const compileCmd = lang.compile(filePath, className);
       const { stderr, exitCode } = await execPromise(compileCmd, 15000);
+      // Guard branch for invalid state or input.
       if (exitCode !== 0) {
         return {
           verdict: "CE",
@@ -227,10 +241,12 @@ exports.runWithInput = async (code, language, input = "", timeLimit = 5000) => {
     const { stdout, stderr, timedOut } = await execPromise(runCmd, effectiveTimeLimit + 2000);
     const executionTime = Date.now() - start;
 
+    // Guard branch for invalid state or input.
     if (timedOut) {
       return { verdict: "TLE", output: "", executionTime, errorMessage: `Time limit exceeded (${Math.round(effectiveTimeLimit / 1000)}s)` };
     }
 
+    // Guard branch for invalid state or input.
     if (stderr && !stdout) {
       return {
         verdict: "RE",
@@ -255,6 +271,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
   const tmpDir = path.join(os.tmpdir(), `aj_proj_${uuidv4()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const zip = new AdmZip(zipPath);
     extractZipSafely(zipPath, tmpDir);
@@ -272,15 +289,19 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     if (!sourceExts) throw new Error("Unsupported language");
 
     const sourceFiles = allFiles.filter((f) => sourceExts.includes(path.extname(f).toLowerCase()));
+    // Guard branch for invalid state or input.
     if (sourceFiles.length === 0) {
       return { verdict: "CE", output: "", executionTime: 0, errorMessage: `No ${language} source files found in zip`, isGTest: false };
     }
 
     const isGTest = language === "cpp" && detectGTestProject(allFiles);
 
+    // normalizePath handles one focused part of this file's workflow.
     const normalizePath = (name) => String(name || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    // resolveSourcePath handles one focused part of this file's workflow.
     const resolveSourcePath = (name) => {
       const normalizedName = normalizePath(name);
+      // Quick guard clause so we fail fast before doing heavier work.
       if (!normalizedName) return null;
       return sourceFiles.find((f) => {
         const rel = toShellPath(path.relative(tmpDir, f));
@@ -288,10 +309,14 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       }) || null;
     };
 
+    // fileHasMain handles one focused part of this file's workflow.
     const fileHasMain = (filePath) => {
+      // Wrap this block to return a clean API/UI error path if anything fails.
       try {
         const content = fs.readFileSync(filePath, "utf-8");
+        // Quick guard clause so we fail fast before doing heavier work.
         if (language === "cpp" || language === "c") return /\bint\s+main\s*\(/.test(content);
+        // Quick guard clause so we fail fast before doing heavier work.
         if (language === "java") return /public\s+static\s+void\s+main\s*\(/.test(content);
       } catch (e) {
         return false;
@@ -304,6 +329,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
 
     let compileSourceFiles = sourceFiles;
     if ((language === "cpp" || language === "c") && mainSourceFiles.length > 1) {
+      // Guard branch for invalid state or input.
       if (!selectedEntrySource) {
         return {
           verdict: "CE",
@@ -320,6 +346,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
 
     const relSources = compileSourceFiles.map((f) => q(toShellPath(path.relative(tmpDir, f))));
 
+    // resolveInputFilePath handles one focused part of this file's workflow.
     const resolveInputFilePath = (name) => {
       const normalizedName = normalizePath(name);
       return allFiles.find((f) => {
@@ -338,6 +365,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       for (const fileName of inputFileNames) {
         const inputFilePath = resolveInputFilePath(fileName);
         if (inputFilePath) {
+          // Wrap this block to return a clean API/UI error path if anything fails.
           try {
             chunks.push(fs.readFileSync(inputFilePath, "utf-8"));
           } catch (e) {
@@ -350,6 +378,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       const inputFileName = input.substring(1).trim();
       const inputFilePath = resolveInputFilePath(inputFileName);
       if (inputFilePath) {
+        // Wrap this block to return a clean API/UI error path if anything fails.
         try {
           actualInput = fs.readFileSync(inputFilePath, "utf-8");
         } catch (e) {
@@ -394,6 +423,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     } else if (language === "java") {
       compileCmd = `javac ${relSources.join(" ")}`;
       const javaMainFile = selectedEntrySource || sourceFiles.find((file) => {
+        // Wrap this block to return a clean API/UI error path if anything fails.
         try {
           const content = fs.readFileSync(file, "utf-8");
           return /public\s+static\s+void\s+main\s*\(/.test(content);
@@ -414,6 +444,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     if (compileCmd) {
       const compileTimeoutMs = Math.min(600000, Math.max(90000, 30000 + (sourceFiles.length * 5000)));
       const compileRes = await execPromise(compileCmd, compileTimeoutMs, { cwd: tmpDir });
+      // Guard branch for invalid state or input.
       if (compileRes.timedOut) {
         return {
           verdict: "CE",
@@ -423,6 +454,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
           isGTest
         };
       }
+      // Guard branch for invalid state or input.
       if (compileRes.exitCode !== 0) {
         return {
           verdict: "CE",
@@ -438,6 +470,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     const runRes = await execPromise(runCmd, effectiveTimeLimit + 5000, { cwd: tmpDir });
     const executionTime = Date.now() - start;
 
+    // Guard branch for invalid state or input.
     if (runRes.timedOut) {
       return {
         verdict: "TLE",
@@ -449,6 +482,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     }
 
     // In Google Test mode, non-zero exit means tests failed.
+    // Guard branch for invalid state or input.
     if (isGTest) {
       return {
         verdict: runRes.exitCode === 0 ? "AC" : "WA",
@@ -459,6 +493,7 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
       };
     }
 
+    // Guard branch for invalid state or input.
     if (runRes.exitCode !== 0 && runRes.stderr && !runRes.stdout) {
       return {
         verdict: "RE",
@@ -502,6 +537,7 @@ exports.runProjectAgainstTests = async (zipPath, language, testCases = []) => {
 
   const probe = await exports.runProjectFromZip(zipPath, language, testCases[0]?.input || "", testCases[0]?.timeLimit || 5000);
 
+  // Guard branch for invalid state or input.
   if (probe.isGTest) {
     return {
       isGTest: true,
@@ -519,6 +555,7 @@ exports.runProjectAgainstTests = async (zipPath, language, testCases = []) => {
     };
   }
 
+  // Guard branch for invalid state or input.
   if (probe.verdict === "CE") {
     return {
       isGTest: false,

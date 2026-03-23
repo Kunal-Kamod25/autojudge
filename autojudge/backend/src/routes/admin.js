@@ -1,3 +1,4 @@
+// This file drives the admin feature flow and keeps the behavior easy to reason about.
 const router = require('express').Router();
 const User = require('../models/User');
 const Submission = require('../models/Submission');
@@ -10,6 +11,7 @@ router.use(protect, authorize('admin'));
 const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 router.get('/stats', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const [users, submissions, assignments, practices] = await Promise.all([
       User.countDocuments(),
@@ -25,6 +27,7 @@ router.get('/stats', async (req, res) => {
 });
 
 router.get('/users', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const { page = 1, limit = 20, role, search } = req.query;
     const safePage = Math.max(parseInt(page, 10) || 1, 1);
@@ -42,8 +45,10 @@ router.get('/users', async (req, res) => {
 });
 
 router.patch('/users/:id/toggle', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const user = await User.findById(req.params.id);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!user) return res.status(404).json({ success: false, message: 'Not found' });
     user.isActive = !user.isActive;
     await user.save();
@@ -52,6 +57,7 @@ router.patch('/users/:id/toggle', async (req, res) => {
 });
 
 router.post('/practice', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const p = await Practice.create(req.body);
     res.status(201).json({ success: true, problem: p });
@@ -59,6 +65,7 @@ router.post('/practice', async (req, res) => {
 });
 
 router.delete('/practice/:id', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     await Practice.findByIdAndDelete(req.params.id);
     res.json({ success: true });

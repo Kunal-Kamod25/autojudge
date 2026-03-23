@@ -1,3 +1,4 @@
+// This file drives the pdfService feature flow and keeps the behavior easy to reason about.
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');

@@ -1,7 +1,10 @@
+// This file drives the check-db feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 require('dotenv').config();
 
+// checkDB handles one focused part of this file's workflow.
 const checkDB = async () => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/autojudge');
     console.log('Connected to MongoDB');

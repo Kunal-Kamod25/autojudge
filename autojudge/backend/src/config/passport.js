@@ -1,3 +1,4 @@
+// This file drives the passport feature flow and keeps the behavior easy to reason about.
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
@@ -12,10 +13,13 @@ passport.deserializeUser(async (id, done) => {
 
 // Local Strategy
 passport.use(new LocalStrategy({ usernameField: 'email' }, async (email, password, done) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const user = await User.findOne({ email }).select('+password');
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!user || !user.password) return done(null, false, { message: 'Invalid credentials' });
     const match = await bcrypt.compare(password, user.password);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!match) return done(null, false, { message: 'Invalid credentials' });
     return done(null, user);
   } catch(e) { return done(e); }
@@ -28,6 +32,7 @@ if (process.env.GOOGLE_CLIENT_ID) {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.GOOGLE_CALLBACK_URL
   }, async (accessToken, refreshToken, profile, done) => {
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       let user = await User.findOne({ googleId: profile.id });
       if (!user) {
@@ -57,6 +62,7 @@ if (process.env.GITHUB_CLIENT_ID) {
     callbackURL: process.env.GITHUB_CALLBACK_URL,
     scope: ['user:email']
   }, async (accessToken, refreshToken, profile, done) => {
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       let user = await User.findOne({ githubId: profile.id });
       if (!user) {

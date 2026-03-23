@@ -1,3 +1,4 @@
+// This file drives the Submission feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 
 const testResultSchema = new mongoose.Schema({

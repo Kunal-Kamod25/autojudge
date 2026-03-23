@@ -1,3 +1,4 @@
+// This file drives the submissionController feature flow and keeps the behavior easy to reason about.
 const Submission = require('../models/Submission');
 const Assignment = require('../models/Assignment');
 const User = require('../models/User');
@@ -7,6 +8,7 @@ const { generateSubmissionReport } = require('../services/pdfService');
 const fs = require('fs');
 const AdmZip = require('adm-zip');
 
+// cleanupUploadedFile handles one focused part of this file's workflow.
 const cleanupUploadedFile = (file) => {
   if (file?.path) {
     fs.unlink(file.path, () => {});
@@ -14,6 +16,7 @@ const cleanupUploadedFile = (file) => {
 };
 
 exports.submit = async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const { code, language, assignmentId } = req.body;
     let finalCode = code;
@@ -26,6 +29,7 @@ exports.submit = async (req, res) => {
         isZipUpload = true;
         const zip = new AdmZip(req.file.path);
         const entries = zip.getEntries().filter(e => !e.isDirectory);
+        // Guard branch for invalid state or input.
         if (entries.length > 2000) {
           return res.status(400).json({ success: false, message: 'ZIP contains too many files' });
         }
@@ -52,13 +56,16 @@ exports.submit = async (req, res) => {
       }
     }
 
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!finalCode) return res.status(400).json({ success: false, message: 'No code provided' });
 
     let testCases = [], assignment = null, totalScore = 100;
 
     if (assignmentId) {
       assignment = await Assignment.findById(assignmentId);
+      // Quick guard clause so we fail fast before doing heavier work.
       if (!assignment) return res.status(404).json({ success: false, message: 'Assignment not found' });
+      // Quick guard clause so we fail fast before doing heavier work.
       if (!assignment.languages.includes(language)) return res.status(400).json({ success: false, message: 'Language not allowed' });
       testCases = assignment.testCases;
       totalScore = assignment.totalPoints;
@@ -151,6 +158,7 @@ exports.submit = async (req, res) => {
 };
 
 exports.runCustom = async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const { code, language, input = '', timeLimit, entryFile = '' } = req.body;
     const parsedLimit = Number(timeLimit);
@@ -160,6 +168,7 @@ exports.runCustom = async (req, res) => {
     let finalCode = code;
     let runResult = null;
 
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
 
     // Handle file upload for custom run
@@ -188,6 +197,7 @@ exports.runCustom = async (req, res) => {
       }
     }
 
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!finalCode) return res.status(400).json({ success: false, message: 'No code provided' });
     if (!runResult) runResult = await runWithInput(finalCode, language, input, customTimeLimit);
 
@@ -217,6 +227,7 @@ exports.runCustom = async (req, res) => {
     });
 
     // Lightweight AI feedback for custom run
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const feedback = await generateFeedback(finalCode, language, submission.testResults, 'Custom Run');
       submission.aiFeedback = feedback;
@@ -249,16 +260,20 @@ exports.runCustom = async (req, res) => {
 };
 
 exports.extractZip = async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
+    // Guard branch for invalid state or input.
     if (!req.file || !req.file.originalname.endsWith('.zip')) {
       return res.status(400).json({ success: false, message: 'ZIP file required' });
     }
 
     const { language } = req.body;
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
 
     const zip = new AdmZip(req.file.path);
     const entries = zip.getEntries();
+    // Guard branch for invalid state or input.
     if (entries.length > 2000) {
       return res.status(400).json({ success: false, message: 'ZIP contains too many files' });
     }
@@ -294,6 +309,7 @@ exports.extractZip = async (req, res) => {
 
         let content = '';
         let hasMain = false;
+        // Wrap this block to return a clean API/UI error path if anything fails.
         try {
           if (isSourceFile || isInputFile || isExpectedFile) {
             content = entry.header?.size > 1024 * 1024 ? '[File too large to preview]' : zip.readAsText(entry);
@@ -330,18 +346,24 @@ exports.extractZip = async (req, res) => {
 };
 
 exports.getSubmission = async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const sub = await Submission.findById(req.params.id).populate('student', 'name email avatar').populate('assignment', 'title');
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!sub) return res.status(404).json({ success: false, message: 'Not found' });
+    // Quick guard clause so we fail fast before doing heavier work.
     if (sub.student._id.toString() !== req.user._id.toString() && req.user.role === 'student') return res.status(403).json({ success: false, message: 'Access denied' });
     res.json({ success: true, submission: sub });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
 exports.downloadPDF = async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const sub = await Submission.findById(req.params.id).populate('student', 'name email').populate('assignment', 'title');
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!sub) return res.status(404).json({ success: false, message: 'Not found' });
+    // Quick guard clause so we fail fast before doing heavier work.
     if (sub.student._id.toString() !== req.user._id.toString() && req.user.role === 'student') return res.status(403).json({ success: false, message: 'Access denied' });
 
     let pdfPath = sub.pdfReportPath;
@@ -355,6 +377,7 @@ exports.downloadPDF = async (req, res) => {
 };
 
 exports.getMySubmissions = async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const { page = 1, limit = 10, assignmentId } = req.query;
     const query = { student: req.user._id };

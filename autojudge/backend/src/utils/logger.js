@@ -1,3 +1,4 @@
+// This file drives the logger feature flow and keeps the behavior easy to reason about.
 const winston = require("winston");
 const logger = winston.createLogger({
   level: "info",

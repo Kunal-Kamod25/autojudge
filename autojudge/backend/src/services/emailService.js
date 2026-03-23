@@ -1,3 +1,4 @@
+// This file drives the emailService feature flow and keeps the behavior easy to reason about.
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
@@ -11,6 +12,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// sendOTPEmail handles one focused part of this file's workflow.
 const sendOTPEmail = async (to, otp, name) => {
   const html = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #0D1B2A; border-radius: 16px; overflow: hidden; border: 1px solid rgba(0,180,216,0.2);">
@@ -36,6 +38,7 @@ const sendOTPEmail = async (to, otp, name) => {
     </div>
   `;
 
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     await transporter.sendMail({
       from: `"AutoJudge" <${process.env.SMTP_USER}>`,

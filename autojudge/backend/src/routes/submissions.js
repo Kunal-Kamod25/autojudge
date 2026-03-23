@@ -1,3 +1,4 @@
+// This file drives the submissions feature flow and keeps the behavior easy to reason about.
 const router = require('express').Router();
 const ctrl = require('../controllers/submissionController');
 const { protect } = require('../middleware/auth');

@@ -1,8 +1,10 @@
+// This file drives the practice feature flow and keeps the behavior easy to reason about.
 const router = require('express').Router();
 const Practice = require('../models/Practice');
 const { protect } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const { difficulty, tag, page = 1, limit = 20 } = req.query;
     const query = { isActive: true };
@@ -15,8 +17,10 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/:id', protect, async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const p = await Practice.findById(req.params.id);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!p) return res.status(404).json({ success: false, message: 'Not found' });
     p.testCases = p.testCases.filter(tc => !tc.isHidden);
     res.json({ success: true, problem: p });

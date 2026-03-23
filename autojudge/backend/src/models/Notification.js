@@ -1,3 +1,4 @@
+// This file drives the Notification feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema({

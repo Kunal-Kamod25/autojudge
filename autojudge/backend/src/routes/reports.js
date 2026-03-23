@@ -1,3 +1,4 @@
+// This file drives the reports feature flow and keeps the behavior easy to reason about.
 const router = require('express').Router();
 const Submission = require('../models/Submission');
 const User = require('../models/User');
@@ -6,6 +7,7 @@ const { protect, authorize } = require('../middleware/auth');
 router.use(protect);
 
 router.get('/teacher/dashboard', authorize('teacher', 'admin'), async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const Assignment = require('../models/Assignment');
     const myAssignments = await Assignment.find({ teacher: req.user._id }).select('_id');
@@ -21,6 +23,7 @@ router.get('/teacher/dashboard', authorize('teacher', 'admin'), async (req, res)
 });
 
 router.get('/student/dashboard', async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const subs = await Submission.find({ student: req.user._id }).sort('-createdAt').limit(10).populate('assignment', 'title');
     const stats = await Submission.aggregate([
@@ -35,6 +38,7 @@ router.get('/student/dashboard', async (req, res) => {
 
 // Plagiarism report for teacher
 router.get('/plagiarism', authorize('teacher', 'admin'), async (req, res) => {
+  // Wrap this block to return a clean API/UI error path if anything fails.
   try {
     const { assignmentId } = req.query;
     const Assignment = require('../models/Assignment');

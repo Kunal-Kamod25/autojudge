@@ -1,3 +1,4 @@
+// This file drives the User feature flow and keeps the behavior easy to reason about.
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -30,6 +31,7 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 userSchema.pre('save', async function(next) {
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!this.isModified('password') || !this.password) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();

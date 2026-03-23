@@ -1,3 +1,4 @@
+// This file drives the auth feature flow and keeps the behavior easy to reason about.
 const router = require('express').Router();
 const passport = require('passport');
 const { body } = require('express-validator');
