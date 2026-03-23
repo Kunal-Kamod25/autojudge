@@ -1,4 +1,5 @@
 "use client"
+// This file drives the TeacherDashboard feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
@@ -11,12 +12,14 @@ import toast from 'react-hot-toast'
 
 const VERDICT_COLORS = { AC: '#00C896', WA: '#FF5A5F', TLE: '#FF9E00', MLE: '#B388FF', RE: '#FF5A5F', CE: '#90A4AE' }
 
+// TeacherDashboard handles one focused part of this file's workflow.
 export default function TeacherDashboard() {
   const { user } = useAuthStore()
   const [stats, setStats] = useState(null)
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // load handles one focused part of this file's workflow.
   const load = () => {
     Promise.all([reportApi.teacherDashboard(), assignmentApi.getAll()])
       .then(([r, a]) => { setStats(r.data.stats); setAssignments(a.data.assignments) })
@@ -26,19 +29,23 @@ export default function TeacherDashboard() {
 
   useEffect(() => { load() }, [])
 
+  // deleteAssignment handles one focused part of this file's workflow.
   const deleteAssignment = async (id) => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!confirm('Delete this assignment?')) return
     await assignmentApi.delete(id)
     toast.success('Deleted')
     setAssignments(p => p.filter(a => a._id !== id))
   }
 
+  // publishToggle handles one focused part of this file's workflow.
   const publishToggle = async (a) => {
     await assignmentApi.update(a._id, { isPublished: !a.isPublished })
     setAssignments(p => p.map(x => x._id === a._id ? { ...x, isPublished: !x.isPublished } : x))
     toast.success(a.isPublished ? 'Unpublished' : 'Published!')
   }
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
   const chartData = stats?.verdicts?.map(v => ({ name: v._id, count: v.count })) || []

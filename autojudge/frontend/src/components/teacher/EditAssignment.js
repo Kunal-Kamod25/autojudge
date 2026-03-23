@@ -1,4 +1,5 @@
 "use client"
+// This file drives the EditAssignment feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast'
 
 const DEFAULT_TC = { input:'', expectedOutput:'', type:'basic', timeLimit:2000, points:10, isHidden:false }
 
+// EditAssignmentPage handles one focused part of this file's workflow.
 export default function EditAssignmentPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -23,17 +25,24 @@ export default function EditAssignmentPage() {
       .catch(() => toast.error('Assignment not found'))
   }, [id])
 
+  // addTC handles one focused part of this file's workflow.
   const addTC = () => setTestCases(p => [...p, { ...DEFAULT_TC }])
+  // removeTC handles one focused part of this file's workflow.
   const removeTC = (i) => setTestCases(p => p.filter((_, idx) => idx !== i))
+  // updateTC handles one focused part of this file's workflow.
   const updateTC = (i, k, v) => setTestCases(p => p.map((tc, idx) => idx === i ? { ...tc, [k]: v } : tc))
 
+  // toggleLang handles one focused part of this file's workflow.
   const toggleLang = (lang) => setForm(p => ({
     ...p, languages: p.languages.includes(lang) ? p.languages.filter(l => l !== lang) : [...p.languages, lang]
   }))
 
+  // generateTests handles one focused part of this file's workflow.
   const generateTests = async () => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!form.problemStatement) return toast.error('Problem statement required')
     setGenerating(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const res = await assignmentApi.generateTests(id, { language: form.languages[0], count: 20 })
       setTestCases(p => [...p, ...res.data.testCases])
@@ -42,8 +51,10 @@ export default function EditAssignmentPage() {
     finally { setGenerating(false) }
   }
 
+  // handleSave handles one focused part of this file's workflow.
   const handleSave = async (publish) => {
     setSaving(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       await assignmentApi.update(id, { ...form, testCases, isPublished: publish ?? form.isPublished })
       toast.success('Saved!')
@@ -52,6 +63,7 @@ export default function EditAssignmentPage() {
     finally { setSaving(false) }
   }
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!form) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
   return (

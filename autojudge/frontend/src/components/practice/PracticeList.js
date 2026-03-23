@@ -1,4 +1,5 @@
 "use client"
+// This file drives the PracticeList feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
@@ -6,6 +7,7 @@ import { Search, Filter, Code2 } from 'lucide-react'
 import { practiceApi } from '@/lib/api'
 import Navbar from '@/components/layout/Navbar'
 
+// PracticePage handles one focused part of this file's workflow.
 export default function PracticePage() {
   const [problems, setProblems] = useState([])
   const [loading, setLoading] = useState(true)

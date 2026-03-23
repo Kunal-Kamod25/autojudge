@@ -1,4 +1,5 @@
 "use client"
+// This file drives the PlagiarismChecker feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertTriangle, Search, Shield, Eye } from 'lucide-react'
@@ -7,6 +8,7 @@ import { assignmentApi, submissionApi } from '@/lib/api'
 import Navbar from '@/components/layout/Navbar'
 import Link from 'next/link'
 
+// PlagiarismPage handles one focused part of this file's workflow.
 export default function PlagiarismPage() {
   const [flagged, setFlagged] = useState([])
   const [assignments, setAssignments] = useState([])
@@ -26,6 +28,7 @@ export default function PlagiarismPage() {
       .finally(() => setLoading(false))
   }, [selected])
 
+  // getSeverity handles one focused part of this file's workflow.
   const getSeverity = (score) => score >= 90 ? { label:'Critical', color:'text-danger', bg:'bg-danger/20' } : score >= 75 ? { label:'High', color:'text-warning', bg:'bg-warning/20' } : { label:'Medium', color:'text-yellow-400', bg:'bg-yellow-400/20' }
 
   return (

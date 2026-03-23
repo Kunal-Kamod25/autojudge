@@ -1,4 +1,5 @@
 "use client"
+// This file drives the AssignmentView feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
@@ -29,6 +30,7 @@ const VERDICT_CONFIG = {
   MLE: { color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning', icon: AlertCircle, label: 'Memory Limit' },
 }
 
+// AssignmentPage handles one focused part of this file's workflow.
 export default function AssignmentPage() {
   const { id } = useParams()
   const { user } = useAuthStore()
@@ -55,14 +57,17 @@ export default function AssignmentPage() {
   const onDrop = useCallback((files) => { if (files[0]) { setFile(files[0]); setTab('code'); toast.success(`Loaded: ${files[0].name}`) } }, [])
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/*': ['.cpp', '.c', '.py', '.java', '.js'], 'application/zip': ['.zip'] }, maxFiles: 1 })
 
+  // handleLanguageChange handles one focused part of this file's workflow.
   const handleLanguageChange = (lang) => {
     setLanguage(lang)
     setCode(LANG_TEMPLATES[lang] || '')
   }
 
+  // handleSubmit handles one focused part of this file's workflow.
   const handleSubmit = async () => {
     setSubmitting(true)
     setResult(null)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       let response
       if (file) {
@@ -83,8 +88,11 @@ export default function AssignmentPage() {
     } finally { setSubmitting(false) }
   }
 
+  // downloadPDF handles one focused part of this file's workflow.
   const downloadPDF = async () => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!result?._id) return
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const res = await submissionApi.downloadPDF(result._id)
       const url = URL.createObjectURL(new Blob([res.data]))
@@ -93,6 +101,7 @@ export default function AssignmentPage() {
     } catch(e) { toast.error('PDF generation failed') }
   }
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!assignment) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
   const vc = result ? VERDICT_CONFIG[result.verdict] : null

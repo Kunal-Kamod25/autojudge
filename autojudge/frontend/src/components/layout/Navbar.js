@@ -1,4 +1,5 @@
 "use client"
+// This file drives the Navbar feature flow and keeps the behavior easy to reason about.
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
@@ -21,6 +22,7 @@ const teacherLinks = [
   { href: '/teacher/plagiarism',       label: 'Plagiarism',  icon: Shield },
 ]
 
+// Navbar handles one focused part of this file's workflow.
 export default function Navbar() {
   const { user, logout } = useAuthStore()
   const router   = useRouter()
@@ -30,11 +32,13 @@ export default function Navbar() {
   const dropRef = useRef(null)
 
   useEffect(() => {
+    // h handles one focused part of this file's workflow.
     const h = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false) }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  // handleLogout handles one focused part of this file's workflow.
   const handleLogout = async () => {
     try { await authApi.logout() } catch (_) {}
     logout()

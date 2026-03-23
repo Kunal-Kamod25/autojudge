@@ -1,3 +1,4 @@
+// This file drives the index feature flow and keeps the behavior easy to reason about.
 const isProduction = process.env.NODE_ENV === 'production'
 
 const defaultBackendUrl = isProduction

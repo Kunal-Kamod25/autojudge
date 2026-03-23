@@ -1,4 +1,5 @@
 "use client"
+// This file drives the SubmissionDetail feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
@@ -16,6 +17,7 @@ const VERDICT_CONFIG = {
   MLE: { color:'text-warning', bg:'bg-warning/10', border:'border-warning/40', icon: AlertCircle, label:'Memory Limit Exceeded' },
 }
 
+// SubmissionDetailPage handles one focused part of this file's workflow.
 export default function SubmissionDetailPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -27,7 +29,9 @@ export default function SubmissionDetailPage() {
     submissionApi.getSubmission(id).then(r => setSub(r.data.submission)).catch(() => toast.error('Submission not found')).finally(() => setLoading(false))
   }, [id])
 
+  // downloadPDF handles one focused part of this file's workflow.
   const downloadPDF = async () => {
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const res = await submissionApi.downloadPDF(id)
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
@@ -36,7 +40,9 @@ export default function SubmissionDetailPage() {
     } catch { toast.error('PDF generation failed') }
   }
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!sub) return <div className="min-h-screen bg-navy flex items-center justify-center text-gray-400">Submission not found</div>
 
   const vc = VERDICT_CONFIG[sub.verdict] || VERDICT_CONFIG.CE

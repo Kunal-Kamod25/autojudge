@@ -1,3 +1,4 @@
+// This file drives the layout feature flow and keeps the behavior easy to reason about.
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
 
@@ -7,6 +8,7 @@ export const metadata = {
   icons: { icon: '/favicon.ico' }
 }
 
+// RootLayout handles one focused part of this file's workflow.
 export default function RootLayout({ children }) {
   return (
     <html lang="en">

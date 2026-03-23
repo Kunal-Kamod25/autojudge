@@ -1,4 +1,5 @@
 "use client"
+// This file drives the LoginForm feature flow and keeps the behavior easy to reason about.
 import { Suspense, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
@@ -11,6 +12,7 @@ import { OAUTH_URLS } from '@/config'
 import toast from 'react-hot-toast'
 
 const codeLines = [
+  // Decorative editor preview shown on the left panel.
   { text: 'def dijkstra(graph, src):', color: '#c9d8ea' },
   { text: '    dist = {v: float("inf")', color: '#7a9ab5' },
   { text: '             for v in graph}', color: '#7a9ab5' },
@@ -25,12 +27,18 @@ const codeLines = [
   { text: '    return dist', color: '#00B4D8' },
 ]
 
+// LoginPageContent handles one focused part of this file's workflow.
 function LoginPageContent() {
+  // Login form state.
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // UI interaction state.
   const [focused, setFocused] = useState({})
   const [showForgot, setShowForgot] = useState(false)
+
+  // Forgot-password flow state (step 1 -> 2 -> 3).
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotStep, setForgotStep] = useState(1)
   const [forgotLoading, setForgotLoading] = useState(false)
@@ -46,8 +54,10 @@ function LoginPageContent() {
   const params = useSearchParams()
 
   useEffect(() => {
+    // Animate the fake code snippet line-by-line, then show accepted verdict.
     const lineInterval = setInterval(() => {
       setVisibleLines(v => {
+        // Quick guard clause so we fail fast before doing heavier work.
         if (v < codeLines.length) return v + 1
         clearInterval(lineInterval)
         setTimeout(() => setShowVerdict(true), 400)
@@ -58,6 +68,7 @@ function LoginPageContent() {
   }, [])
 
   useEffect(() => {
+    // Pull platform stats for the cards on the left pane.
     api.get('/api/stats').then(({ data }) => {
       if (data.stats) setPlatformStats([
         { icon: Users, value: String(data.stats.students), label: 'Coders' },
@@ -67,9 +78,12 @@ function LoginPageContent() {
     }).catch(() => {})
   }, [])
 
+  // handleSubmit handles one focused part of this file's workflow.
   const handleSubmit = async (e) => {
+    // Standard email/password login flow.
     e.preventDefault()
     setLoading(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const { data } = await authApi.login(form)
       login(data.user)
@@ -80,10 +94,14 @@ function LoginPageContent() {
     } finally { setLoading(false) }
   }
 
+  // handleForgotPassword handles one focused part of this file's workflow.
   const handleForgotPassword = async (e) => {
+    // Step 1: request OTP for the entered email.
     e.preventDefault()
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!forgotEmail) return toast.error('Enter your email address')
     setForgotLoading(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       await authApi.forgotPassword({ email: forgotEmail })
       toast.success('Verification code sent to your email!')
@@ -93,10 +111,14 @@ function LoginPageContent() {
     } finally { setForgotLoading(false) }
   }
 
+  // handleVerifyOTP handles one focused part of this file's workflow.
   const handleVerifyOTP = async (e) => {
+    // Step 2: verify 6-digit OTP and fetch reset token.
     e.preventDefault()
+    // Quick guard clause so we fail fast before doing heavier work.
     if (otpCode.length !== 6) return toast.error('Enter the 6-digit code')
     setForgotLoading(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const { data } = await authApi.verifyOTP({ email: forgotEmail, otp: otpCode })
       setResetToken(data.resetToken)
@@ -107,11 +129,16 @@ function LoginPageContent() {
     } finally { setForgotLoading(false) }
   }
 
+  // handleResetPassword handles one focused part of this file's workflow.
   const handleResetPassword = async (e) => {
+    // Step 3: validate and submit new password.
     e.preventDefault()
+    // Quick guard clause so we fail fast before doing heavier work.
     if (newPassword.length < 6) return toast.error('Password must be at least 6 characters')
+    // Quick guard clause so we fail fast before doing heavier work.
     if (newPassword !== confirmPassword) return toast.error('Passwords do not match')
     setForgotLoading(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       await authApi.resetPassword({ resetToken, newPassword })
       toast.success('Password reset successfully! You can now log in.')
@@ -121,7 +148,9 @@ function LoginPageContent() {
     } finally { setForgotLoading(false) }
   }
 
+  // closeForgotModal handles one focused part of this file's workflow.
   const closeForgotModal = () => {
+    // Reset modal state so each open starts fresh.
     setShowForgot(false)
     setForgotStep(1)
     setForgotEmail('')
@@ -473,6 +502,7 @@ function LoginPageContent() {
   )
 }
 
+// LoginPage handles one focused part of this file's workflow.
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen auth-split-bg" />}>

@@ -1,4 +1,5 @@
 "use client"
+// This file drives the ProfileView feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
@@ -11,6 +12,7 @@ import Link from 'next/link'
 
 const VERDICT_COLORS = { AC:'#00C896', WA:'#FF5A5F', TLE:'#FF9E00', MLE:'#B388FF', RE:'#FF5A5F', CE:'#90A4AE' }
 
+// ProfilePage handles one focused part of this file's workflow.
 export default function ProfilePage() {
   const { id } = useParams()
   const { user: me } = useAuthStore()
@@ -26,10 +28,12 @@ export default function ProfilePage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return <div className="min-h-screen bg-navy flex items-center justify-center">
     <div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" />
   </div>
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!profile) return <div className="min-h-screen bg-navy flex items-center justify-center text-gray-400">User not found</div>
 
   const radarData = [

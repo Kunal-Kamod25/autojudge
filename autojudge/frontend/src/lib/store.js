@@ -1,3 +1,4 @@
+// This file drives the store feature flow and keeps the behavior easy to reason about.
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 

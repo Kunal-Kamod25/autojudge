@@ -1,4 +1,5 @@
 "use client"
+// This file drives the Leaderboard feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Trophy, Medal, Star, Flame, Code2, TrendingUp } from 'lucide-react'
@@ -14,6 +15,7 @@ const RANK_STYLES = [
 ]
 const RANK_TEXT = ['text-warning', 'text-gray-300', 'text-amber-500']
 
+// LeaderboardPage handles one focused part of this file's workflow.
 export default function LeaderboardPage() {
   const { user } = useAuthStore()
   const [board, setBoard] = useState([])
@@ -27,6 +29,7 @@ export default function LeaderboardPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return (
     <div className="min-h-screen bg-navy flex items-center justify-center">
       <div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" />

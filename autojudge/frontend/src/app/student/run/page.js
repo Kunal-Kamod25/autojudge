@@ -1,4 +1,5 @@
 "use client"
+// This file drives the page feature flow and keeps the behavior easy to reason about.
 import { useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { useDropzone } from 'react-dropzone'
@@ -40,18 +41,23 @@ const buildAxBPairs = (fileNames = []) => {
   const leftMap = new Map();
   const rightMap = new Map();
 
+  // splitBySide handles one focused part of this file's workflow.
   const splitBySide = (fullName) => {
     const base = fullName.split('/').pop().toLowerCase();
     const ext = (base.match(/\.[^.]+$/) || [''])[0];
 
     const left1 = base.match(/^(.*?)(left)\.[^.]+$/i);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (left1) return { side: 'left', key: `${left1[1]}${ext}` };
     const right1 = base.match(/^(.*?)(right)\.[^.]+$/i);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (right1) return { side: 'right', key: `${right1[1]}${ext}` };
 
     const left2 = base.match(/^(.*?)[_-]?l\.[^.]+$/i);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (left2) return { side: 'left', key: `${left2[1]}${ext}` };
     const right2 = base.match(/^(.*?)[_-]?r\.[^.]+$/i);
+    // Quick guard clause so we fail fast before doing heavier work.
     if (right2) return { side: 'right', key: `${right2[1]}${ext}` };
 
     return { side: 'unknown', key: base };
@@ -64,6 +70,7 @@ const buildAxBPairs = (fileNames = []) => {
   }
 
   const keys = [...leftMap.keys()].filter((k) => rightMap.has(k));
+  // Guard branch for invalid state or input.
   if (keys.length > 0) {
     return keys.map((k) => [leftMap.get(k), rightMap.get(k)]);
   }
@@ -85,6 +92,7 @@ const normalizeCaseKey = (fullName = '') => {
 
 const normalizedText = (s = '') => String(s).replace(/\r\n/g, '\n').trim();
 
+// StudentRunPage handles one focused part of this file's workflow.
 export default function StudentRunPage() {
   const [language, setLanguage] = useState('cpp')
   const [code, setCode] = useState(TEMPLATES.cpp)
@@ -101,6 +109,7 @@ export default function StudentRunPage() {
   const [batchResults, setBatchResults] = useState([])
 
   const onDrop = useCallback((files) => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!files?.[0]) return
     const f = files[0]
     setFile(f)
@@ -117,13 +126,16 @@ export default function StudentRunPage() {
     }
   }, [])
 
+  // extractZipFiles handles one focused part of this file's workflow.
   const extractZipFiles = async (zipFile) => {
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const fd = new FormData()
       fd.append('file', zipFile)
       fd.append('language', language)
       const res = await submissionApi.extractZip(fd)
       setZipFiles(res.data.files)
+      // mainCandidates handles one focused part of this file's workflow.
       const mainCandidates = (res.data.files || []).filter((x) => x.isSourceFile && x.hasMain)
       if (mainCandidates.length > 1) setEntryFile(ENTRY_ALL_MAINS)
       else setEntryFile(mainCandidates[0]?.name || '')
@@ -139,11 +151,13 @@ export default function StudentRunPage() {
     maxFiles: 1
   })
 
+  // handleLanguage handles one focused part of this file's workflow.
   const handleLanguage = (nextLang) => {
     setLanguage(nextLang)
     if (!file) setCode(TEMPLATES[nextLang] || '')
   }
 
+  // handleRun handles one focused part of this file's workflow.
   const handleRun = async () => {
     if (!file && !code.trim()) {
       toast.error('Please add code first')
@@ -154,11 +168,13 @@ export default function StudentRunPage() {
     setResult(null)
     setBatchResults([])
 
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const expectedByKey = new Map(
         expectedFiles.map((f) => [normalizeCaseKey(f.name), f])
       )
 
+      // runOnce handles one focused part of this file's workflow.
       const runOnce = async (runInput, entryOverride = '') => {
         if (file) {
           const fd = new FormData()

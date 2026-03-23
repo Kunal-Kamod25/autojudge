@@ -1,4 +1,5 @@
 "use client"
+// This file drives the RegisterForm feature flow and keeps the behavior easy to reason about.
 import { Suspense, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
@@ -12,6 +13,7 @@ import toast from 'react-hot-toast'
 const strengthColors = ['#FF5A5F', '#FF9E00', '#FFD600', '#00C896']
 const strengthLabels = ['Weak', 'Fair', 'Good', 'Strong']
 
+// getPasswordStrength handles one focused part of this file's workflow.
 function getPasswordStrength(pwd) {
   let score = 0
   if (pwd.length >= 6) score++
@@ -59,6 +61,7 @@ const testimonial = {
   avatar: 'PS',
 }
 
+// RegisterPageContent handles one focused part of this file's workflow.
 function RegisterPageContent() {
   const params = useSearchParams()
   const [form, setForm] = useState({ name: '', email: '', password: '', role: params.get('role') || 'student' })
@@ -71,10 +74,13 @@ function RegisterPageContent() {
 
   const pwdStrength = getPasswordStrength(form.password)
 
+  // handleSubmit handles one focused part of this file's workflow.
   const handleSubmit = async (e) => {
     e.preventDefault()
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!agreed) return toast.error('Please accept the terms to continue')
     setLoading(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const { data } = await authApi.register(form)
       login(data.user)
@@ -353,6 +359,7 @@ function RegisterPageContent() {
   )
 }
 
+// RegisterPage handles one focused part of this file's workflow.
 export default function RegisterPage() {
   return (
     <Suspense fallback={<div className="min-h-screen auth-split-bg" />}>

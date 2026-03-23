@@ -1,4 +1,5 @@
 "use client"
+// This file drives the NewAssignment feature flow and keeps the behavior easy to reason about.
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast'
 
 const DEFAULT_TC = { input: '', expectedOutput: '', type: 'basic', timeLimit: 2000, points: 10, isHidden: false }
 
+// NewAssignmentPage handles one focused part of this file's workflow.
 export default function NewAssignmentPage() {
   const router = useRouter()
   const [form, setForm] = useState({
@@ -20,10 +22,14 @@ export default function NewAssignmentPage() {
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // addTestCase handles one focused part of this file's workflow.
   const addTestCase = () => setTestCases(p => [...p, { ...DEFAULT_TC }])
+  // removeTC handles one focused part of this file's workflow.
   const removeTC = (i) => setTestCases(p => p.filter((_, idx) => idx !== i))
+  // updateTC handles one focused part of this file's workflow.
   const updateTC = (i, k, v) => setTestCases(p => p.map((tc, idx) => idx === i ? { ...tc, [k]: v } : tc))
 
+  // toggleLang handles one focused part of this file's workflow.
   const toggleLang = (lang) => {
     setForm(p => ({
       ...p,
@@ -31,9 +37,12 @@ export default function NewAssignmentPage() {
     }))
   }
 
+  // generateTests handles one focused part of this file's workflow.
   const generateTests = async () => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!form.problemStatement) return toast.error('Add problem statement first')
     setGenerating(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const saved = await assignmentApi.create({ ...form, testCases: [] })
       const res = await assignmentApi.generateTests(saved.data.assignment._id, { language: form.languages[0], count: 20 })
@@ -45,8 +54,10 @@ export default function NewAssignmentPage() {
     } finally { setGenerating(false) }
   }
 
+  // handleSave handles one focused part of this file's workflow.
   const handleSave = async (publish = false) => {
     setSaving(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       await assignmentApi.create({ ...form, testCases, isPublished: publish })
       toast.success(publish ? 'Assignment published!' : 'Assignment saved as draft')

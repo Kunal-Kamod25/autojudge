@@ -1,8 +1,10 @@
 "use client"
+// This file drives the NotFoundPage feature flow and keeps the behavior easy to reason about.
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Code2, Home } from 'lucide-react'
 
+// NotFound handles one focused part of this file's workflow.
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-navy flex items-center justify-center px-6">

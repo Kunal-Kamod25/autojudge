@@ -1,10 +1,12 @@
 "use client"
+// This file drives the page feature flow and keeps the behavior easy to reason about.
 import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/lib/store'
 import axios from 'axios'
 import { BACKEND_URL } from '@/config'
 
+// OAuthCallbackPageContent handles one focused part of this file's workflow.
 function OAuthCallbackPageContent() {
   const router = useRouter()
   const params = useSearchParams()
@@ -43,6 +45,7 @@ function OAuthCallbackPageContent() {
   )
 }
 
+// OAuthCallbackPage handles one focused part of this file's workflow.
 export default function OAuthCallbackPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-navy" />}>

@@ -1,4 +1,5 @@
 "use client"
+// This file drives the Settings feature flow and keeps the behavior easy to reason about.
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { User, Lock, Bell, Palette, Save, Eye, EyeOff, CheckCircle, Phone, Github, Linkedin, FileText } from 'lucide-react'
@@ -13,6 +14,7 @@ const TABS = [
   { id:'notifs',    label:'Notifications', icon: Bell },
 ]
 
+// SettingsPage handles one focused part of this file's workflow.
 export default function SettingsPage() {
   const { user, setUser } = useAuthStore()
   const [tab, setTab] = useState('profile')
@@ -26,8 +28,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  // saveProfile handles one focused part of this file's workflow.
   const saveProfile = async () => {
     setSaving(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const { data } = await api.put('/api/users/profile', profileForm)
       setUser(data.user)
@@ -37,10 +41,14 @@ export default function SettingsPage() {
     finally { setSaving(false) }
   }
 
+  // savePassword handles one focused part of this file's workflow.
   const savePassword = async () => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (pwdForm.newPassword !== pwdForm.confirm) return toast.error('Passwords do not match')
+    // Quick guard clause so we fail fast before doing heavier work.
     if (pwdForm.newPassword.length < 6) return toast.error('Password must be at least 6 characters')
     setSaving(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       await api.put('/api/users/password', { currentPassword: pwdForm.currentPassword, newPassword: pwdForm.newPassword })
       setPwdForm({ currentPassword:'', newPassword:'', confirm:'' })

@@ -1,4 +1,5 @@
 "use client"
+// This file drives the NotificationBell feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react'
@@ -14,6 +15,7 @@ const TYPE_ICONS = {
   achievement: '🏆', assignment: '📚', system: '🔔'
 }
 
+// NotificationBell handles one focused part of this file's workflow.
 export default function NotificationBell() {
   const { user } = useAuthStore()
   const [notifications, setNotifications] = useState([])
@@ -22,8 +24,10 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false)
   const ref = useRef(null)
 
+  // load handles one focused part of this file's workflow.
   const load = async () => {
     setLoading(true)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const { data } = await notificationApi.getAll({ limit: 15 })
       setNotifications(data.notifications)
@@ -47,34 +51,42 @@ export default function NotificationBell() {
       ))
     })
     // Close on outside click
+    // handler handles one focused part of this file's workflow.
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handler)
     return () => { socket.disconnect(); document.removeEventListener('mousedown', handler) }
   }, [user?._id])
 
+  // markRead handles one focused part of this file's workflow.
   const markRead = async (id) => {
     await notificationApi.markRead(id)
     setNotifications(p => p.map(n => n._id === id ? { ...n, isRead: true } : n))
     setUnread(p => Math.max(0, p - 1))
   }
 
+  // markAllRead handles one focused part of this file's workflow.
   const markAllRead = async () => {
     await notificationApi.markAllRead()
     setNotifications(p => p.map(n => ({ ...n, isRead: true })))
     setUnread(0)
   }
 
+  // deleteNotif handles one focused part of this file's workflow.
   const deleteNotif = async (id, e) => {
     e.stopPropagation()
     await notificationApi.delete(id)
     setNotifications(p => p.filter(n => n._id !== id))
   }
 
+  // timeAgo handles one focused part of this file's workflow.
   const timeAgo = (date) => {
     const diff = Date.now() - new Date(date)
     const mins = Math.floor(diff / 60000)
+    // Quick guard clause so we fail fast before doing heavier work.
     if (mins < 1) return 'just now'
+    // Quick guard clause so we fail fast before doing heavier work.
     if (mins < 60) return `${mins}m ago`
+    // Quick guard clause so we fail fast before doing heavier work.
     if (mins < 1440) return `${Math.floor(mins/60)}h ago`
     return `${Math.floor(mins/1440)}d ago`
   }

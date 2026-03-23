@@ -1,4 +1,5 @@
 "use client"
+// This file drives the SubmissionsList feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
@@ -9,6 +10,7 @@ import Navbar from '@/components/layout/Navbar'
 const V_COLORS = { AC:'#00C896', WA:'#FF5A5F', TLE:'#FF9E00', MLE:'#B388FF', RE:'#FF5A5F', CE:'#90A4AE', PENDING:'#60A5FA' }
 const LANGS = ['', 'cpp', 'python', 'java', 'javascript', 'c']
 
+// SubmissionsPage handles one focused part of this file's workflow.
 export default function SubmissionsPage() {
   const [subs, setSubs] = useState([])
   const [total, setTotal] = useState(0)
@@ -27,8 +29,10 @@ export default function SubmissionsPage() {
 
   useEffect(() => { load(page) }, [page, lang])
 
+  // downloadPDF handles one focused part of this file's workflow.
   const downloadPDF = async (id, e) => {
     e.preventDefault()
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const res = await submissionApi.downloadPDF(id)
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))

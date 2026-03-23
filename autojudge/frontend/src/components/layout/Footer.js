@@ -1,4 +1,5 @@
 "use client"
+// This file drives the Footer feature flow and keeps the behavior easy to reason about.
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Code2, Github, Twitter, Linkedin, Mail, Heart, Zap, BookOpen, Trophy, Shield } from 'lucide-react'
@@ -32,6 +33,7 @@ const socialLinks = [
   { icon: Mail, href: 'mailto:support@autojudge.dev', label: 'Email' },
 ]
 
+// Footer handles one focused part of this file's workflow.
 export default function Footer() {
   const [stats, setStats] = useState([
     { value: '0', label: 'Students' },

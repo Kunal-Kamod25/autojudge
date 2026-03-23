@@ -1,3 +1,4 @@
+// This file drives the api feature flow and keeps the behavior easy to reason about.
 import axios from 'axios';
 import { BACKEND_URL } from '@/config'
 
@@ -14,6 +15,7 @@ api.interceptors.response.use(
     const orig = err.config;
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !orig._retry) {
       orig._retry = true;
+      // Wrap this block to return a clean API/UI error path if anything fails.
       try {
         await api.post('/api/auth/refresh');
         return api(orig);

@@ -1,4 +1,5 @@
 "use client"
+// This file drives the StudentDashboard feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
@@ -10,6 +11,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 
 const VERDICT_COLORS = { AC: '#00C896', WA: '#FF5A5F', TLE: '#FF9E00', MLE: '#B388FF', RE: '#FF5A5F', CE: '#90A4AE' }
 
+// StudentDashboard handles one focused part of this file's workflow.
 export default function StudentDashboard() {
   const { user } = useAuthStore()
   const [data, setData] = useState(null)
@@ -25,6 +27,7 @@ export default function StudentDashboard() {
 
   const verdictData = data?.verdictStats?.map(v => ({ name: v._id, value: v.count })) || []
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
   return (

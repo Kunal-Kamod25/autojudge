@@ -1,4 +1,5 @@
 "use client"
+// This file drives the AdminPanel feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Shield, Users, Code2, BookOpen, BarChart2, Search, Ban, CheckCircle, Plus, Trash2 } from 'lucide-react'
@@ -12,6 +13,7 @@ import { useRouter } from 'next/navigation'
 const LANG_COLORS = { cpp:'#00B4D8', python:'#FFD43B', java:'#FF5A5F', javascript:'#F7DF1E', c:'#A8B9CC' }
 const VERDICT_COLORS = { AC:'#00C896', WA:'#FF5A5F', TLE:'#FF9E00', MLE:'#B388FF', RE:'#FF5A5F', CE:'#90A4AE' }
 
+// AdminPage handles one focused part of this file's workflow.
 export default function AdminPage() {
   const { user } = useAuthStore()
   const router = useRouter()
@@ -31,13 +33,16 @@ export default function AdminPage() {
       .finally(() => setLoading(false))
   }, [user, router])
 
+  // toggleUser handles one focused part of this file's workflow.
   const toggleUser = async (id) => {
     await adminApi.toggleUser(id)
     setUsers(p => p.map(u => u._id === id ? { ...u, isActive: !u.isActive } : u))
     toast.success('User status updated')
   }
 
+  // addProblem handles one focused part of this file's workflow.
   const addProblem = async () => {
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       await adminApi.createPractice(newProblem)
       toast.success('Practice problem added!')
@@ -48,6 +53,7 @@ export default function AdminPage() {
 
   const filtered = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
   const langData = stats?.stats?.subsByLang?.map(l => ({ name: l._id?.toUpperCase(), value: l.count })) || []

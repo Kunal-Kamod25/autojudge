@@ -1,4 +1,5 @@
 "use client"
+// This file drives the StudentsList feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
@@ -6,6 +7,7 @@ import { Users, Search, TrendingUp, Code2, Trophy } from 'lucide-react'
 import api from '@/lib/api'
 import Navbar from '@/components/layout/Navbar'
 
+// TeacherStudentsPage handles one focused part of this file's workflow.
 export default function TeacherStudentsPage() {
   const [students, setStudents] = useState([])
   const [filtered, setFiltered] = useState([])
@@ -24,8 +26,10 @@ export default function TeacherStudentsPage() {
     setFiltered(list)
   }, [search, sortBy, students])
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (loading) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
+  // avg handles one focused part of this file's workflow.
   const avg = (field) => students.length ? Math.round(students.reduce((s, u) => s + (u.stats?.[field] || 0), 0) / students.length) : 0
 
   return (

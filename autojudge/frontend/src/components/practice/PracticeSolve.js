@@ -1,4 +1,5 @@
 "use client"
+// This file drives the PracticeSolve feature flow and keeps the behavior easy to reason about.
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Editor from '@monaco-editor/react'
@@ -17,6 +18,7 @@ const TEMPLATES = {
 }
 const V_COLORS = { AC:'#00C896', WA:'#FF5A5F', TLE:'#FF9E00', MLE:'#B388FF', RE:'#FF5A5F', CE:'#90A4AE' }
 
+// PracticeSolvePage handles one focused part of this file's workflow.
 export default function PracticeSolvePage() {
   const { id } = useParams()
   const [problem, setProblem] = useState(null)
@@ -32,10 +34,13 @@ export default function PracticeSolvePage() {
   const onDrop = useCallback(([f]) => { if (f) { setFile(f); toast.success(`Loaded ${f.name}`) } }, [])
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/*': ['.cpp','.c','.py','.java','.js'], 'application/zip': ['.zip'] }, maxFiles: 1 })
 
+  // handleLang handles one focused part of this file's workflow.
   const handleLang = (lang) => { setLanguage(lang); setCode(TEMPLATES[lang] || '') }
 
+  // handleSubmit handles one focused part of this file's workflow.
   const handleSubmit = async () => {
     setSubmitting(true); setResult(null)
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       let res
       if (file) {
@@ -50,8 +55,11 @@ export default function PracticeSolvePage() {
     finally { setSubmitting(false) }
   }
 
+  // downloadPDF handles one focused part of this file's workflow.
   const downloadPDF = async () => {
+    // Quick guard clause so we fail fast before doing heavier work.
     if (!result?._id) return
+    // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       const res = await submissionApi.downloadPDF(result._id)
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
@@ -59,6 +67,7 @@ export default function PracticeSolvePage() {
     } catch { toast.error('PDF failed') }
   }
 
+  // Quick guard clause so we fail fast before doing heavier work.
   if (!problem) return <div className="min-h-screen bg-navy flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-cyan border-t-transparent rounded-full" /></div>
 
   return (

@@ -1,4 +1,5 @@
 "use client"
+// This file drives the LandingPage feature flow and keeps the behavior easy to reason about.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, useScroll, useTransform } from 'framer-motion'
@@ -19,6 +20,7 @@ const LANGS = ['C++', 'Python', 'Java', 'JavaScript', 'C']
 const VERDICTS = ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE']
 const VERDICT_COLORS = { AC: '#00C896', WA: '#FF5A5F', TLE: '#FF9E00', MLE: '#B388FF', RE: '#FF5A5F', CE: '#90A4AE' }
 
+// LandingPage handles one focused part of this file's workflow.
 export default function LandingPage() {
   const [currentLang, setCurrentLang] = useState(0)
   const [typed, setTyped] = useState('')
