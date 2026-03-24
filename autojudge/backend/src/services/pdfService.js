@@ -49,30 +49,62 @@ exports.generateSubmissionReport = async (submission, user, assignment) => {
       .text(`Score: ${submission.score || 0} / ${submission.totalScore || 100}`, 70, 200);
     doc.fontSize(14).text(`Verdict: ${submission.verdict || 'N/A'}  |  Tests: ${submission.passedTests || 0}/${submission.totalTests || 0} passed`, 70, 228);
 
-    // Test Results Table
+    // Test Results Table or GTest Results
     let y = 265;
-    doc.fillColor('#0D1B2A').fontSize(14).font('Helvetica-Bold').text('Test Case Results', 50, y);
-    y += 25;
-    doc.rect(50, y, 495, 25).fill('#0D1B2A');
-    doc.fillColor('#FFFFFF').fontSize(10).font('Helvetica-Bold');
-    doc.text('#', 60, y + 7); doc.text('Type', 90, y + 7);
-    doc.text('Verdict', 200, y + 7); doc.text('Time (ms)', 290, y + 7);
-    doc.text('Input (preview)', 380, y + 7);
-    y += 25;
+    if (submission.isGTest && submission.gtestData) {
+      doc.fillColor('#0D1B2A').fontSize(14).font('Helvetica-Bold').text('Google Test Results', 50, y);
+      y += 25;
+      doc.rect(50, y, 495, 25).fill('#0D1B2A');
+      doc.fillColor('#FFFFFF').fontSize(10).font('Helvetica-Bold');
+      doc.text('Test Suite / Name', 60, y + 7);
+      doc.text('Status', 300, y + 7);
+      doc.text('Time', 400, y + 7);
+      y += 25;
 
-    const results = (submission.testResults || []).slice(0, 25);
-    results.forEach((r, i) => {
-      if (y > 720) { doc.addPage(); y = 50; }
-      const bg = i % 2 === 0 ? '#F8FBFF' : '#FFFFFF';
-      doc.rect(50, y, 495, 22).fill(bg);
-      const vColor = r.verdict === 'AC' ? '#00C896' : r.verdict === 'TLE' ? '#FF9E00' : '#FF5A5F';
-      doc.fillColor('#333').fontSize(9).font('Helvetica').text(`${i+1}`, 60, y+6);
-      doc.text(r.type || 'basic', 90, y+6);
-      doc.fillColor(vColor).font('Helvetica-Bold').text(r.verdict || '-', 200, y+6);
-      doc.fillColor('#333').font('Helvetica').text(`${r.executionTime || 0}ms`, 290, y+6);
-      doc.text((r.input || '').substring(0, 25) + (r.input?.length > 25 ? '...' : ''), 380, y+6);
-      y += 22;
-    });
+      const gtests = (submission.gtestData.tests || []).slice(0, 50);
+      gtests.forEach((t, i) => {
+        if (y > 700) { doc.addPage(); y = 50; }
+        const bg = i % 2 === 0 ? '#F8FBFF' : '#FFFFFF';
+        doc.rect(50, y, 495, 22).fill(bg);
+        const vColor = t.status === 'PASSED' ? '#00C896' : '#FF5A5F';
+        doc.fillColor('#333').fontSize(9).font('Helvetica').text(`${t.suite}.${t.name}`.substring(0, 55), 60, y+6);
+        doc.fillColor(vColor).font('Helvetica-Bold').text(t.status, 300, y+6);
+        doc.fillColor('#333').font('Helvetica').text(`${t.duration || 0}ms`, 400, y+6);
+        y += 22;
+
+        if (t.status === 'FAILED' && t.failure_message) {
+          const msg = t.failure_message.substring(0, 300);
+          const height = Math.min(60, doc.heightOfString(msg, { width: 450, size: 8 }));
+          if (y + height > 720) { doc.addPage(); y = 50; }
+          doc.rect(60, y, 475, height + 8).fill('#FFF0F0');
+          doc.fillColor('#800').fontSize(8).font('Courier').text(msg, 70, y + 4, { width: 450 });
+          y += height + 12;
+        }
+      });
+    } else {
+      doc.fillColor('#0D1B2A').fontSize(14).font('Helvetica-Bold').text('Test Case Results', 50, y);
+      y += 25;
+      doc.rect(50, y, 495, 25).fill('#0D1B2A');
+      doc.fillColor('#FFFFFF').fontSize(10).font('Helvetica-Bold');
+      doc.text('#', 60, y + 7); doc.text('Type', 90, y + 7);
+      doc.text('Verdict', 200, y + 7); doc.text('Time (ms)', 290, y + 7);
+      doc.text('Input (preview)', 380, y + 7);
+      y += 25;
+
+      const results = (submission.testResults || []).slice(0, 25);
+      results.forEach((r, i) => {
+        if (y > 720) { doc.addPage(); y = 50; }
+        const bg = i % 2 === 0 ? '#F8FBFF' : '#FFFFFF';
+        doc.rect(50, y, 495, 22).fill(bg);
+        const vColor = r.verdict === 'AC' ? '#00C896' : r.verdict === 'TLE' ? '#FF9E00' : '#FF5A5F';
+        doc.fillColor('#333').fontSize(9).font('Helvetica').text(`${i+1}`, 60, y+6);
+        doc.text(r.type || 'basic', 90, y+6);
+        doc.fillColor(vColor).font('Helvetica-Bold').text(r.verdict || '-', 200, y+6);
+        doc.fillColor('#333').font('Helvetica').text(`${r.executionTime || 0}ms`, 290, y+6);
+        doc.text((r.input || '').substring(0, 25) + (r.input?.length > 25 ? '...' : ''), 380, y+6);
+        y += 22;
+      });
+    }
 
     // AI Feedback
     if (submission.aiFeedback?.summary) {

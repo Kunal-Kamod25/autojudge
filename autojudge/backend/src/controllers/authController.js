@@ -1,11 +1,6 @@
-// This file drives the authController feature flow and keeps the behavior easy to reason about.
 const User = require('../models/User');
-const crypto = require('crypto');
-const { generateTokens, verifyToken, setTokenCookies, getCookieConfig, JWT_SECRET, JWT_REFRESH_SECRET } = require('../utils/jwt');
-const { sendOTPEmail } = require('../services/emailService');
+const { generateTokens, verifyToken, setTokenCookies, getCookieConfig, JWT_REFRESH_SECRET } = require('../utils/jwt');
 
-// generateOTP handles one focused part of this file's workflow.
-const generateOTP = () => crypto.randomInt(100000, 999999).toString();
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 exports.register = async (req, res) => {
@@ -76,92 +71,10 @@ exports.logout = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
-exports.getMe = async (req, res) => {
-  res.json({ success: true, user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, avatar: req.user.avatar, bio: req.user.bio, phone: req.user.phone, github: req.user.github, linkedin: req.user.linkedin, stats: req.user.stats, isVerified: req.user.isVerified } });
-};
-
 exports.oauthSuccess = async (req, res) => {
   const { accessToken, refreshToken } = generateTokens(req.user._id);
   req.user.refreshTokens.push({ token: refreshToken });
   await req.user.save();
   setTokenCookies(res, accessToken, refreshToken);
   res.redirect(`${frontendUrl}/auth/callback`);
-};
-
-// ─── Forgot Password Flow ─────────────────────────────
-
-exports.forgotPassword = async (req, res) => {
-  // Wrap this block to return a clean API/UI error path if anything fails.
-  try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (!user) return res.status(404).json({ success: false, message: 'No account found with this email' });
-    // Guard branch for invalid state or input.
-    if (!user.password && (user.googleId || user.githubId)) {
-      return res.status(400).json({ success: false, message: 'This account uses OAuth sign-in. Password reset is not available.' });
-    }
-    const otp = generateOTP();
-    user.otp = await require('bcryptjs').hash(otp, 10);
-    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 min
-    await user.save();
-    await sendOTPEmail(user.email, otp, user.name);
-    res.json({ success: true, message: 'Verification code sent to your email' });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-};
-
-exports.verifyOTP = async (req, res) => {
-  // Wrap this block to return a clean API/UI error path if anything fails.
-  try {
-    const { email, otp } = req.body;
-    const user = await User.findOne({ email }).select('+otp +otpExpires');
-    // Guard branch for invalid state or input.
-    if (!user || !user.otp || !user.otpExpires) {
-      return res.status(400).json({ success: false, message: 'No OTP request found. Please request a new code.' });
-    }
-    if (user.otpExpires < new Date()) {
-      user.otp = undefined;
-      user.otpExpires = undefined;
-      await user.save();
-      return res.status(400).json({ success: false, message: 'Code has expired. Please request a new one.' });
-    }
-    const isValid = await require('bcryptjs').compare(otp, user.otp);
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (!isValid) return res.status(400).json({ success: false, message: 'Invalid verification code' });
-    // Generate a short-lived reset token
-    const resetToken = require('jsonwebtoken').sign(
-      { id: user._id, purpose: 'password-reset' },
-      JWT_SECRET,
-      { expiresIn: '15m', algorithm: 'HS256' }
-    );
-    user.otp = undefined;
-    user.otpExpires = undefined;
-    await user.save();
-    res.json({ success: true, message: 'Code verified', resetToken });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-};
-
-exports.resetPassword = async (req, res) => {
-  // Wrap this block to return a clean API/UI error path if anything fails.
-  try {
-    const { resetToken, newPassword } = req.body;
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (!resetToken || !newPassword) return res.status(400).json({ success: false, message: 'Token and password required' });
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (newPassword.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-    const decoded = require('jsonwebtoken').verify(resetToken, JWT_SECRET, { algorithms: ['HS256'] });
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (decoded.purpose !== 'password-reset') return res.status(400).json({ success: false, message: 'Invalid reset token' });
-    const user = await User.findById(decoded.id);
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    user.password = newPassword;
-    user.refreshTokens = []; // Invalidate all sessions
-    await user.save();
-    res.json({ success: true, message: 'Password has been reset successfully. You can now log in.' });
-  } catch (err) {
-    // Quick guard clause so we fail fast before doing heavier work.
-    if (err.name === 'TokenExpiredError') return res.status(400).json({ success: false, message: 'Reset token has expired. Please start over.' });
-    res.status(500).json({ success: false, message: err.message });
-  }
 };

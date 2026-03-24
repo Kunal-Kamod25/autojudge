@@ -131,6 +131,65 @@ const detectGTestProject = (files) => {
   return false;
 };
 
+/**
+ * parseGTestOutput parses Google Test stdout into structured per-test results.
+ * @param {string} output - Raw stdout from GTest binary
+ * @returns {{ summary: {total:number, passed:number, failed:number, duration:number}, tests: Array }}
+ */
+const parseGTestOutput = (output) => {
+  const lines = (output || '').split('\n');
+  const tests = [];
+  let currentSuite = '';
+  let currentTest = null;
+  let failureLines = [];
+
+  for (const line of lines) {
+    const suiteMatch = line.match(/^\[----------\] \d+ tests? from (.+)$/);
+    if (suiteMatch) { currentSuite = suiteMatch[1]; continue; }
+
+    const testStartMatch = line.match(/^\[ RUN      \] (.+)\.(.+)$/);
+    if (testStartMatch) {
+      currentTest = { suite: testStartMatch[1], name: testStartMatch[2], status: 'RUNNING', duration: 0, failure_message: '' };
+      failureLines = [];
+      continue;
+    }
+
+    const testOkMatch = line.match(/^\[       OK \] (.+)\.(.+) \((\d+) ms\)$/);
+    if (testOkMatch && currentTest) {
+      currentTest.status = 'PASSED';
+      currentTest.duration = parseInt(testOkMatch[3], 10);
+      currentTest.failure_message = '';
+      tests.push({ ...currentTest });
+      currentTest = null;
+      failureLines = [];
+      continue;
+    }
+
+    const testFailMatch = line.match(/^\[  FAILED  \] (.+)\.(.+)(?: \((\d+) ms\))?$/);
+    if (testFailMatch && currentTest) {
+      currentTest.status = 'FAILED';
+      currentTest.duration = parseInt(testFailMatch[3] || '0', 10);
+      currentTest.failure_message = failureLines.join('\n').trim();
+      tests.push({ ...currentTest });
+      currentTest = null;
+      failureLines = [];
+      continue;
+    }
+
+    // Collect failure detail lines (not status lines)
+    if (currentTest && !line.startsWith('[')) {
+      failureLines.push(line);
+    }
+  }
+
+  const passed = tests.filter(t => t.status === 'PASSED').length;
+  const failed = tests.filter(t => t.status === 'FAILED').length;
+  const totalDurationMatch = output.match(/\[==========\] .+ \((\d+) ms total\)/);
+  const duration = totalDurationMatch ? parseInt(totalDurationMatch[1], 10) : 0;
+
+  return { summary: { total: tests.length, passed, failed, duration }, tests };
+};
+
 exports.runCode = async (code, language, testCases) => {
   const tmpDir = path.join(os.tmpdir(), `aj_${uuidv4()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -484,12 +543,15 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
     // In Google Test mode, non-zero exit means tests failed.
     // Guard branch for invalid state or input.
     if (isGTest) {
+      const rawOut = (runRes.stdout || "").trim();
+      const gtestData = parseGTestOutput(rawOut);
       return {
         verdict: runRes.exitCode === 0 ? "AC" : "WA",
-        output: (runRes.stdout || "").trim(),
+        output: rawOut,
         executionTime,
         errorMessage: runRes.stderr ? runRes.stderr.substring(0, 1000) : "",
-        isGTest
+        isGTest,
+        gtestData
       };
     }
 
@@ -516,9 +578,9 @@ exports.runProjectFromZip = async (zipPath, language, input = "", timeLimit = 50
   }
 };
 
-exports.runProjectAgainstTests = async (zipPath, language, testCases = []) => {
+exports.runProjectAgainstTests = async (zipPath, language, testCases = [], entryFile = "") => {
   if (!Array.isArray(testCases) || testCases.length === 0) {
-    const single = await exports.runProjectFromZip(zipPath, language, "");
+    const single = await exports.runProjectFromZip(zipPath, language, "", 5000, entryFile);
     return {
       isGTest: !!single.isGTest,
       testResults: [{
@@ -535,12 +597,13 @@ exports.runProjectAgainstTests = async (zipPath, language, testCases = []) => {
     };
   }
 
-  const probe = await exports.runProjectFromZip(zipPath, language, testCases[0]?.input || "", testCases[0]?.timeLimit || 5000);
+  const probe = await exports.runProjectFromZip(zipPath, language, testCases[0]?.input || "", testCases[0]?.timeLimit || 5000, entryFile);
 
   // Guard branch for invalid state or input.
   if (probe.isGTest) {
     return {
       isGTest: true,
+      gtestData: probe.gtestData || null,
       testResults: [{
         type: "gtest",
         input: "",
@@ -576,7 +639,7 @@ exports.runProjectAgainstTests = async (zipPath, language, testCases = []) => {
 
   const testResults = [];
   for (const tc of testCases) {
-    const runRes = await exports.runProjectFromZip(zipPath, language, tc.input || "", tc.timeLimit || 5000);
+    const runRes = await exports.runProjectFromZip(zipPath, language, tc.input || "", tc.timeLimit || 5000, entryFile);
     const expected = (tc.expectedOutput || "").trim();
     const actual = (runRes.output || "").trim();
 
