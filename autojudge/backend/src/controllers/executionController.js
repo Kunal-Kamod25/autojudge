@@ -4,6 +4,7 @@ const { generateFeedback } = require('../services/aiService');
 const { cleanupUploadedFile } = require('../utils/fileUtils');
 const fs = require('fs');
 const AdmZip = require('adm-zip');
+const logger = require('../utils/logger');
 
 exports.runCustom = async (req, res) => {
   // Wrap this block to return a clean API/UI error path if anything fails.
@@ -120,8 +121,17 @@ exports.extractZip = async (req, res) => {
     // Quick guard clause so we fail fast before doing heavier work.
     if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
 
+    logger.info(`Extracting ZIP: ${req.file.originalname} for ${language}`);
     const zip = new AdmZip(req.file.path);
     const entries = zip.getEntries();
+    
+    if (entries.length === 0) {
+      logger.warn(`ZIP file is empty: ${req.file.originalname}`);
+      return res.status(400).json({ success: false, message: 'ZIP file is empty' });
+    }
+    
+    logger.info(`Found ${entries.length} raw entries in ZIP`);
+    
     // Guard branch for invalid state or input.
     if (entries.length > 2000) {
       return res.status(400).json({ success: false, message: 'ZIP contains too many files' });
@@ -138,52 +148,61 @@ exports.extractZip = async (req, res) => {
     const allowedSourceExt = sourceExtByLang[language] || ['cpp', 'c', 'py', 'java', 'js'];
 
     entries.forEach(entry => {
-      if (!entry.isDirectory) {
-        const fileName = entry.entryName;
-        const lowerName = fileName.toLowerCase();
-        const ext = fileName.split('.').pop().toLowerCase();
-        const isSourceFile = allowedSourceExt.includes(ext);
-        const isExpectedFile = ['out', 'ans'].includes(ext)
-          || lowerName.includes('expected')
-          || lowerName.includes('output')
-          || lowerName.includes('answer')
-          || lowerName.includes('_out')
-          || lowerName.includes('_ans');
-        const isInputFile = !isExpectedFile && (
-          ['txt', 'in', 'input'].includes(ext)
-          || lowerName.includes('input')
-          || lowerName.includes('test')
-          || /(?:^|[\/_-])[ksm](?:left|right|l|r)?\.txt$/i.test(lowerName)
-        );
+      const fileName = entry.entryName;
+      // Skip Mac metadata and system files
+      if (entry.isDirectory || fileName.includes('__MACOSX') || fileName.includes('.DS_Store')) {
+        return;
+      }
 
-        let content = '';
-        let hasMain = false;
-        // Wrap this block to return a clean API/UI error path if anything fails.
-        try {
-          if (isSourceFile || isInputFile || isExpectedFile) {
-            content = entry.header?.size > 1024 * 1024 ? '[File too large to preview]' : zip.readAsText(entry);
-            if (isSourceFile) {
-              if (language === 'cpp' || language === 'c') {
-                hasMain = /\bint\s+main\s*\(/.test(content);
-              } else if (language === 'java') {
-                hasMain = /public\s+static\s+void\s+main\s*\(/.test(content);
-              }
+      const lowerName = fileName.toLowerCase();
+      const ext = fileName.split('.').pop().toLowerCase();
+      const isSourceFile = allowedSourceExt.includes(ext);
+      const isExpectedFile = ['out', 'ans'].includes(ext)
+        || lowerName.includes('expected')
+        || lowerName.includes('output')
+        || lowerName.includes('answer')
+        || lowerName.includes('_out')
+        || lowerName.includes('_ans');
+      const isInputFile = !isExpectedFile && (
+        ['txt', 'in', 'input'].includes(ext)
+        || lowerName.includes('input')
+        || lowerName.includes('test')
+        || /(?:^|[\/_-])[ksm](?:left|right|l|r)?\.txt$/i.test(lowerName)
+      );
+
+      let content = '';
+      let hasMain = false;
+      // Wrap this block to return a clean API/UI error path if anything fails.
+      try {
+        if (isSourceFile || isInputFile || isExpectedFile) {
+          content = entry.header?.size > 1024 * 1024 ? '[File too large to preview]' : zip.readAsText(entry);
+          if (isSourceFile) {
+            if (language === 'cpp' || language === 'c') {
+              hasMain = /\b(int|void)\s+main\s*\(/.test(content);
+            } else if (language === 'java') {
+              hasMain = /public\s+static\s+void\s+main\s*\(/.test(content);
+            } else if (language === 'python') {
+              const baseName = fileName.split('/').pop().toLowerCase();
+              hasMain = baseName === 'main.py' || baseName === 'app.py' || /\nif\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content);
+            } else if (language === 'javascript') {
+              const baseName = fileName.split('/').pop().toLowerCase();
+              hasMain = baseName === 'index.js' || baseName === 'main.js' || baseName === 'app.js';
             }
           }
-        } catch (e) {
-          content = '[Binary file or unable to read]';
         }
-
-        files.push({
-          name: fileName,
-          isSourceFile,
-          isInputFile,
-          isExpectedFile,
-          hasMain,
-          size: entry.header.size,
-          content
-        });
+      } catch (e) {
+        content = '[Binary file or unable to read]';
       }
+
+      files.push({
+        name: fileName,
+        isSourceFile,
+        isInputFile,
+        isExpectedFile,
+        hasMain,
+        size: entry.header?.size || 0,
+        content
+      });
     });
 
     res.json({ success: true, files });

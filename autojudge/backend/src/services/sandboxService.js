@@ -29,6 +29,7 @@ const walkFiles = (root) => {
     const dir = stack.pop();
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const e of entries) {
+      if (e.name === "__MACOSX" || e.name === ".DS_Store" || e.name === "thumbs.db") continue;
       const full = path.join(dir, e.name);
       if (e.isDirectory()) stack.push(full);
       else out.push(full);
@@ -73,6 +74,10 @@ const extractZipSafely = (zipPath, destinationDir, options = {}) => {
     const targetPath = resolveSafeZipPath(destinationDir, entry.entryName);
     if (!targetPath) {
       throw new Error("Archive contains unsafe file path");
+    }
+
+    if (entry.entryName.includes("__MACOSX") || entry.entryName.includes(".DS_Store")) {
+      continue;
     }
 
     if (entry.isDirectory) {
