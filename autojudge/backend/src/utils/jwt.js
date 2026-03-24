@@ -32,6 +32,7 @@ const getCookieConfig = () => {
     httpOnly: true,
     secure,
     sameSite,
+    partitioned: sameSite === 'none', // Enable CHIPS for cross-site cookies
     path: "/"
   };
 };
