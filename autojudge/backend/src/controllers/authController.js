@@ -2,6 +2,9 @@ const User = require('../models/User');
 const { generateTokens, verifyToken, setTokenCookies, getCookieConfig, JWT_REFRESH_SECRET } = require('../utils/jwt');
 
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+  console.warn('WARNING: FRONTEND_URL is not set. Using localhost default.');
+}
 
 exports.register = async (req, res) => {
   // Wrap this block to return a clean API/UI error path if anything fails.

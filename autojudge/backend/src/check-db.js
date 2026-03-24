@@ -6,7 +6,8 @@ require('dotenv').config();
 const checkDB = async () => {
   // Wrap this block to return a clean API/UI error path if anything fails.
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/autojudge');
+    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/autojudge';
+    await mongoose.connect(uri);
     console.log('Connected to MongoDB');
     
     const User = mongoose.model('User', new mongoose.Schema({}, { strict: false }), 'users');
