@@ -121,9 +121,10 @@ exports.extractZip = async (req, res) => {
     // Quick guard clause so we fail fast before doing heavier work.
     if (!language) return res.status(400).json({ success: false, message: 'Language is required' });
 
-    logger.info(`Extracting ZIP: ${req.file.originalname} for ${language}`);
+    logger.info(`Starting ZIP extraction for file: ${req.file.originalname}`);
     const zip = new AdmZip(req.file.path);
     const entries = zip.getEntries();
+    logger.info(`ZIP entries count: ${entries.length}`);
     
     if (entries.length === 0) {
       logger.warn(`ZIP file is empty: ${req.file.originalname}`);

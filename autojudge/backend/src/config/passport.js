@@ -5,6 +5,7 @@ const GitHubStrategy = require('passport-github2').Strategy;
 const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
@@ -33,6 +34,7 @@ if (process.env.GOOGLE_CLIENT_ID) {
     callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
     proxy: true
   }, async (accessToken, refreshToken, profile, done) => {
+    logger.info(`Google OAuth profile received for: ${profile?.emails?.[0]?.value || 'unknown'}`);
     // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       let user = await User.findOne({ googleId: profile.id });
@@ -64,10 +66,12 @@ if (process.env.GITHUB_CLIENT_ID) {
     scope: ['user:email'],
     proxy: true
   }, async (accessToken, refreshToken, profile, done) => {
+    logger.info(`GitHub OAuth profile received for: ${profile?.username || 'unknown'}`);
     // Wrap this block to return a clean API/UI error path if anything fails.
     try {
       let user = await User.findOne({ githubId: profile.id });
       if (!user) {
+        logger.info(`No existing user found with GitHub ID ${profile.id}. Checking by email.`);
         const email = profile.emails?.[0]?.value || `${profile.username}@github.com`;
         user = await User.findOne({ email });
         if (user) { user.githubId = profile.id; await user.save(); }
